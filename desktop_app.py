@@ -65,8 +65,11 @@ def start_uvicorn_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
 class DesktopApi:
     """JavaScript API bridge exposed to the Webview window as `window.pywebview.api`."""
 
-    def __init__(self, window_ref):
-        self.window = window_ref
+    def __init__(self, window_ref=None):
+        self._window = window_ref
+
+    def set_window(self, window_ref):
+        self._window = window_ref
 
     def exit_app(self):
         """Cleanly trigger app shutdown from within JavaScript."""
@@ -76,8 +79,11 @@ class DesktopApi:
 
     def _delayed_close(self):
         time.sleep(0.3)
-        if self.window:
-            self.window.destroy()
+        if self._window:
+            try:
+                self._window.destroy()
+            except Exception:
+                pass
         os._exit(0)
 
     def get_author(self):
@@ -149,7 +155,7 @@ def main():
             background_color="#07090e",
             js_api=api_instance
         )
-        api_instance.window = window
+        api_instance.set_window(window)
 
         # Handler on closing window
         def on_closing():
