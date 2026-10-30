@@ -225,6 +225,39 @@ class AegisMap {
     }
   }
 
+  getNodeTooltipHTML(dstIP, dstGeo, conn) {
+    const port = (conn.destination && conn.destination.port) ? `:${conn.destination.port}` : '';
+    const city = (dstGeo && dstGeo.city) ? dstGeo.city : 'Unknown';
+    const country = (dstGeo && dstGeo.country) ? dstGeo.country : '';
+    const locationStr = country ? `${city}, ${country}` : city;
+    const isp = (dstGeo && dstGeo.isp) ? dstGeo.isp : 'N/A';
+    const proc = conn.process || 'Unknown';
+    const proto = conn.protocol || 'TCP';
+
+    return `
+      <div class="text-xs font-mono space-y-1">
+        <div class="flex items-center justify-between border-b border-cyan-500/30 pb-1 mb-1">
+          <span class="font-bold text-cyan-300 text-sm tracking-wide">${dstIP}</span>
+          <span class="text-[11px] text-slate-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">${port}</span>
+        </div>
+        <div class="text-[11px] text-slate-100 font-sans flex items-center">
+          <span class="mr-1 text-cyan-400">📍</span>
+          <span class="font-medium">${locationStr}</span>
+        </div>
+        <div class="text-[10px] text-slate-400">
+          <span class="text-slate-500">ISP:</span> <span class="text-slate-300">${isp}</span>
+        </div>
+        <div class="text-[10px] text-slate-400 flex items-center justify-between pt-0.5">
+          <span>Proc: <span class="text-emerald-400 font-bold">${proc}</span></span>
+          <span class="px-1.5 py-0.2 bg-cyan-950 text-cyan-300 rounded border border-cyan-800 text-[9px] font-bold">${proto}</span>
+        </div>
+        <div class="text-[9px] text-cyan-400/80 pt-1 border-t border-slate-800 italic">
+          ⚡ Click node to open deep inspector
+        </div>
+      </div>
+    `;
+  }
+
   updateConnections(connections, hostLoc) {
     this.lastRawConnections = connections || [];
     if (hostLoc) {
@@ -288,12 +321,17 @@ class AegisMap {
       });
 
       // Update Remote Markers with Destination IP Pill Label
+      const tooltipContent = this.getNodeTooltipHTML(dstIP, dstGeo, conn);
+
       if (this.remoteMarkers.has(dstIP)) {
         // Coordinate sync if GeoIP updated
         const existingMarker = this.remoteMarkers.get(dstIP);
         const curPos = existingMarker.getLatLng();
         if (Math.abs(curPos.lat - dLat) > 0.001 || Math.abs(curPos.lng - dLon) > 0.001) {
           existingMarker.setLatLng([dLat, dLon]);
+        }
+        if (existingMarker.getTooltip()) {
+          existingMarker.setTooltipContent(tooltipContent);
         }
       } else {
         const markerIcon = L.divIcon({
@@ -303,33 +341,19 @@ class AegisMap {
             <div class="remote-marker-ip-label">${dstIP}</div>
           `,
           iconSize: [120, 32],
-          iconAnchor: [60, 5] // 60 is center horizontally, 5 is center of 10px circle
+          iconAnchor: [60, 5], // 60 is center horizontally, 5 is center of 10px circle
+          tooltipAnchor: [0, 0] // Anchor tooltip exactly at the center of the node circle
         });
 
         const marker = L.marker([dLat, dLon], { icon: markerIcon })
           .addTo(this.map)
-          .bindTooltip(`
-            <div class="text-xs font-mono space-y-1">
-              <div class="flex items-center justify-between border-b border-cyan-500/30 pb-1 mb-1">
-                <span class="font-bold text-cyan-300 text-sm tracking-wide">${dstIP}</span>
-                <span class="text-[11px] text-slate-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">:${conn.destination.port || ''}</span>
-              </div>
-              <div class="text-[11px] text-slate-100 font-sans flex items-center">
-                <span class="mr-1 text-cyan-400">📍</span>
-                <span class="font-medium">${dstGeo.city || 'Unknown'}, ${dstGeo.country || ''}</span>
-              </div>
-              <div class="text-[10px] text-slate-400">
-                <span class="text-slate-500">ISP:</span> <span class="text-slate-300">${dstGeo.isp || 'N/A'}</span>
-              </div>
-              <div class="text-[10px] text-slate-400 flex items-center justify-between pt-0.5">
-                <span>Proc: <span class="text-emerald-400 font-bold">${conn.process}</span></span>
-                <span class="px-1.5 py-0.2 bg-cyan-950 text-cyan-300 rounded border border-cyan-800 text-[9px] font-bold">${conn.protocol}</span>
-              </div>
-              <div class="text-[9px] text-cyan-400/80 pt-1 border-t border-slate-800 italic">
-                ⚡ Click node to open deep inspector
-              </div>
-            </div>
-          `, { direction: 'top', offset: [0, -8], className: 'cyber-tooltip', pane: 'topTooltipPane' });
+          .bindTooltip(tooltipContent, { 
+            direction: 'auto', 
+            offset: [10, 0], 
+            className: 'cyber-tooltip', 
+            pane: 'topTooltipPane',
+            opacity: 1.0
+          });
 
         marker.on('click', () => {
           this.selectedArcId = conn.id;
