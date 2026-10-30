@@ -21,8 +21,14 @@ import threading
 import webbrowser
 import logging
 
-# Ensure project root is in sys.path
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+# Ensure project root is in sys.path (supports PyInstaller frozen executable)
+if getattr(sys, 'frozen', False):
+    PROJECT_ROOT = sys._MEIPASS
+    RUNTIME_ROOT = os.path.dirname(sys.executable)
+else:
+    PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+    RUNTIME_ROOT = PROJECT_ROOT
+
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
