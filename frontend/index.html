@@ -1279,14 +1279,24 @@
   <!-- MINIMALIST CYBER SHUTDOWN EXIT OVERLAY -->
   <!-- ================================================================= -->
   <div id="aegisExitOverlay">
+    <div class="cyber-scan-bar" style="background: linear-gradient(90deg, transparent, #f43f5e, #fb7185, transparent); box-shadow: 0 0 15px #f43f5e;"></div>
     <div class="flex flex-col items-center max-w-md px-6 py-8 text-center font-mono">
-      <div class="w-16 h-16 rounded-full bg-rose-950/40 border border-rose-500/40 flex items-center justify-center text-rose-400 mb-4 animate-pulse">
+      <div class="w-16 h-16 rounded-full bg-rose-950/60 border border-rose-500/50 flex items-center justify-center text-rose-400 mb-4 animate-pulse shadow-[0_0_25px_rgba(244,63,94,0.4)]">
         <i data-lucide="power" class="w-8 h-8"></i>
       </div>
-      <h2 class="text-xl font-bold text-white mb-2">AEGISNET TERMINATION SEQUENCE</h2>
-      <p class="text-xs text-rose-300/80 mb-4">Releasing Network Sockets & Disengaging SOC Telemetry...</p>
-      <div class="text-[11px] text-slate-400 mb-2">Session saved. Goodbye, Operator.</div>
-      <div class="text-[10px] text-slate-600 font-mono mt-2">Mehdi Mirzaei &copy; 2026 AegisNet Security</div>
+      <h2 class="text-xl font-bold text-white mb-1 tracking-wider">AEGISNET TERMINATION SEQUENCE</h2>
+      <p class="text-xs text-rose-400 font-mono tracking-wide mb-4">Releasing Network Sockets & Disengaging Telemetry...</p>
+      
+      <!-- 3-Second Shutdown Progress Bar -->
+      <div class="w-64 bg-slate-900/90 h-1.5 rounded-full overflow-hidden border border-rose-900/60 mb-4">
+        <div id="exitProgressBar" class="exit-progress-fill h-full bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500" style="width: 100%;"></div>
+      </div>
+
+      <div class="text-[11px] text-slate-400 mb-1 flex items-center justify-center space-x-2">
+        <span class="inline-block w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+        <span>Closing AegisNet SOC in <span id="exitCountdownText" class="text-rose-400 font-bold">3.0s</span>...</span>
+      </div>
+      <div class="text-[10px] text-slate-500 font-mono mt-3">Mehdi Mirzaei &copy; 2026 AegisNet Security</div>
     </div>
   </div>
 

@@ -67,13 +67,15 @@ class DesktopApi:
 
     def __init__(self, window_ref=None):
         self._window = window_ref
+        self.is_closing = False
 
     def set_window(self, window_ref):
         self._window = window_ref
 
     def exit_app(self):
-        """Cleanly trigger app shutdown from within JavaScript without blocking."""
-        logger.info("[DesktopApi] Exit requested from UI. Closing application...")
+        """Cleanly trigger app shutdown from within JavaScript without blocking after 3s animation."""
+        logger.info("[DesktopApi] Exit requested from UI after 3s animation. Destroying window...")
+        self.is_closing = True
         def _terminate():
             time.sleep(0.05)
             if self._window:
@@ -157,11 +159,26 @@ def main():
         )
         api_instance.set_window(window)
 
-        # Clean, non-blocking window closing handler
+        # Clean, non-blocking window closing handler with 3-second shutdown animation
+        def _perform_graceful_exit():
+            try:
+                window.evaluate_js("if (window.triggerAppShutdown) window.triggerAppShutdown();")
+            except Exception:
+                pass
+            time.sleep(3.0)
+            try:
+                window.destroy()
+            except Exception:
+                pass
+            os._exit(0)
+
         def on_closing():
-            logger.info("AegisNet desktop window closing. Exiting immediately...")
-            threading.Thread(target=lambda: (time.sleep(0.05), os._exit(0)), daemon=True).start()
-            return True
+            if api_instance.is_closing:
+                return True
+            api_instance.is_closing = True
+            logger.info("AegisNet title bar close requested. Displaying exit animation for 3.0 seconds...")
+            threading.Thread(target=_perform_graceful_exit, daemon=True).start()
+            return False
 
         window.events.closing += on_closing
 

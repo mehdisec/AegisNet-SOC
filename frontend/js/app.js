@@ -322,18 +322,19 @@ class AegisApp {
       splash.classList.add('hidden-splash');
       setTimeout(() => {
         try { splash.remove(); } catch(e) {}
-      }, 400);
+      }, 700);
     };
 
     if (skipBtn) {
       skipBtn.addEventListener('click', dismissSplash);
     }
 
-    setTimeout(() => { if (fill) fill.style.width = '40%'; if (s2) s2.classList.remove('opacity-0'); }, 120);
-    setTimeout(() => { if (fill) fill.style.width = '75%'; if (s3) s3.classList.remove('opacity-0'); }, 300);
-    setTimeout(() => { if (fill) fill.style.width = '95%'; if (s4) s4.classList.remove('opacity-0'); }, 550);
-    setTimeout(() => { if (fill) fill.style.width = '100%'; }, 750);
-    setTimeout(dismissSplash, 950);
+    // Starting Intro Sequence (approx 3.0s)
+    setTimeout(() => { if (fill) fill.style.width = '35%'; if (s2) s2.classList.remove('opacity-0'); }, 400);
+    setTimeout(() => { if (fill) fill.style.width = '65%'; if (s3) s3.classList.remove('opacity-0'); }, 1000);
+    setTimeout(() => { if (fill) fill.style.width = '85%'; if (s4) s4.classList.remove('opacity-0'); }, 1600);
+    setTimeout(() => { if (fill) fill.style.width = '100%'; }, 2300);
+    setTimeout(dismissSplash, 3000);
   }
 
   initAboutModal() {
@@ -379,7 +380,23 @@ class AegisApp {
 
     window.triggerAppShutdown = () => {
       const exitOverlay = document.getElementById('aegisExitOverlay');
-      if (exitOverlay) exitOverlay.classList.add('active');
+      if (exitOverlay) {
+        exitOverlay.classList.add('active');
+        const bar = document.getElementById('exitProgressBar');
+        if (bar) {
+          bar.style.width = '100%';
+          setTimeout(() => { bar.style.width = '0%'; }, 50);
+        }
+        const countdownEl = document.getElementById('exitCountdownText');
+        if (countdownEl) {
+          let remaining = 3.0;
+          const interval = setInterval(() => {
+            remaining = Math.max(0, remaining - 0.1);
+            countdownEl.textContent = remaining.toFixed(1) + 's';
+            if (remaining <= 0) clearInterval(interval);
+          }, 100);
+        }
+      }
       if (this.audio && this.audio.enabled) {
         this.audio.play('kill');
       }
@@ -389,13 +406,14 @@ class AegisApp {
     if (exitBtn) {
       exitBtn.addEventListener('click', () => {
         window.triggerAppShutdown();
+        // Wait exactly 3 seconds for ending intro animation before closing
         setTimeout(() => {
           if (window.pywebview && window.pywebview.api && window.pywebview.api.exit_app) {
             window.pywebview.api.exit_app();
           } else {
             window.close();
           }
-        }, 350);
+        }, 3000);
       });
     }
   }

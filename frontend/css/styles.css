@@ -391,3 +391,8 @@ body {
   box-shadow: 0 0 10px rgba(0, 243, 255, 0.8);
 }
 
+.exit-progress-fill {
+  transition: width 2.9s linear;
+  box-shadow: 0 0 10px rgba(244, 63, 94, 0.8);
+}
+
