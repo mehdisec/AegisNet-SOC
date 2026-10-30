@@ -14,6 +14,10 @@
 
 [راهنمای انگلیسی (English)](README.md) • [نصب سریع](#-نصب-سریع-با-پکیج‌های-نصب-خودکار) • [نسخه دسکتاپ](#-نسخه-دسکتاپ-بومی-windows--linux) • [مشخصات صاحب اثر](#-مشخصات-صاحب-اثر-و-تماس)
 
+<br/><br/>
+
+[![پیش‌نمایش زنده داشبورد امنیتی AegisNet SOC](docs/screenshots/aegisnet_soc_preview.png)](docs/screenshots/aegisnet_soc_preview.png)
+
 </div>
 
 ---

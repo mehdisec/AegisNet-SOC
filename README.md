@@ -14,6 +14,10 @@
 
 [English Documentation](README.md) • [راهنمای فارسی](README_FA.md) • [Quick Start](#-quick-start) • [Desktop App](#-native-desktop-suite) • [Author](#-author--attribution)
 
+<br/><br/>
+
+[![AegisNet SOC Live Telemetry Preview](docs/screenshots/aegisnet_soc_preview.png)](docs/screenshots/aegisnet_soc_preview.png)
+
 </div>
 
 ---
