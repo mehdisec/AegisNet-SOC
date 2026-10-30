@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![AegisNet Logo](frontend/static/img/icon.svg)
+[![AegisNet SOC Live Telemetry Preview](docs/screenshots/aegisnet_soc_preview.png)](docs/screenshots/aegisnet_soc_preview.png)
 
 ### **Autonomous SOC Defense, Live Socket Interceptor & Native Desktop Suite**
 
@@ -13,10 +13,6 @@
 [![Author](https://img.shields.io/badge/Architect-Mehdi%20Mirzaei-ffaa00.svg?style=for-the-badge&logo=github)](https://github.com/mehdisec)
 
 [English Documentation](README.md) • [راهنمای فارسی](README_FA.md) • [Quick Start](#-quick-start) • [Desktop App](#-native-desktop-suite) • [Author](#-author--attribution)
-
-<br/><br/>
-
-[![AegisNet SOC Live Telemetry Preview](docs/screenshots/aegisnet_soc_preview.png)](docs/screenshots/aegisnet_soc_preview.png)
 
 </div>
 

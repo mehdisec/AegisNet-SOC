@@ -2,7 +2,7 @@
 
 <div align="center" dir="rtl">
 
-![لوگوی AegisNet](frontend/static/img/icon.svg)
+[![پیش‌نمایش زنده داشبورد امنیتی AegisNet SOC](docs/screenshots/aegisnet_soc_preview.png)](docs/screenshots/aegisnet_soc_preview.png)
 
 ### **سامانه پایش بلادرنگ سوکت‌ها، رادار هوش تهدیدات و نرم‌افزار دسکتاپ بومی**
 
@@ -13,10 +13,6 @@
 [![توسعه‌دهنده](https://img.shields.io/badge/صاحب%20اثر-مهدی%20میرزایی-ffaa00.svg?style=for-the-badge&logo=github)](https://github.com/mehdisec)
 
 [راهنمای انگلیسی (English)](README.md) • [نصب سریع](#-نصب-سریع-با-پکیج‌های-نصب-خودکار) • [نسخه دسکتاپ](#-نسخه-دسکتاپ-بومی-windows--linux) • [مشخصات صاحب اثر](#-مشخصات-صاحب-اثر-و-تماس)
-
-<br/><br/>
-
-[![پیش‌نمایش زنده داشبورد امنیتی AegisNet SOC](docs/screenshots/aegisnet_soc_preview.png)](docs/screenshots/aegisnet_soc_preview.png)
 
 </div>
 
