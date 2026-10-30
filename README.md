@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![AegisNet Logo](frontend/static/img/icon.png)
+![AegisNet Logo](frontend/static/img/icon.svg)
 
 ### **Autonomous SOC Defense, Live Socket Interceptor & Native Desktop Suite**
 

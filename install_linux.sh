@@ -89,7 +89,7 @@ fi
 
 # 7. Create Linux Desktop Entry (.desktop)
 echo -e "${CYAN}[*] Configuring Linux Desktop application launcher...${NC}"
-ICON_PATH="$ROOT_DIR/frontend/static/img/icon.png"
+ICON_PATH="$ROOT_DIR/frontend/static/img/icon.svg"
 DESKTOP_ENTRY_DIR="$HOME/.local/share/applications"
 mkdir -p "$DESKTOP_ENTRY_DIR"
 

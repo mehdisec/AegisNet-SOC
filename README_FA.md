@@ -2,7 +2,7 @@
 
 <div align="center" dir="rtl">
 
-![لوگوی AegisNet](frontend/static/img/icon.png)
+![لوگوی AegisNet](frontend/static/img/icon.svg)
 
 ### **سامانه پایش بلادرنگ سوکت‌ها، رادار هوش تهدیدات و نرم‌افزار دسکتاپ بومی**
 
