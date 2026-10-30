@@ -1,0 +1,47 @@
+[
+  {
+    "id": "ALERT-BRUTEFORCE-1793373836",
+    "timestamp": "2026-10-30T11:23:56.584998",
+    "category": "AUTHENTICATION",
+    "severity": "CRITICAL",
+    "title": "Brute-Force Authentication Anomaly Detected",
+    "description": "Multiple failed login attempts (3) detected against user 'root' from IP 185.220.101.5.",
+    "source_ip": "185.220.101.5",
+    "user": "root",
+    "action": "BRUTE_FORCE_SUSPECTED",
+    "geo": {
+      "ip": "185.220.101.5",
+      "country": "Germany",
+      "country_code": "DE",
+      "city": "Brandenburg an der Havel",
+      "lat": 52.6171,
+      "lon": 13.1207,
+      "isp": "Stiftung Erneuerbare Freiheit",
+      "asn": "AS60729 Stiftung Erneuerbare Freiheit",
+      "org": "Artikel10 e.V",
+      "is_private": false
+    }
+  },
+  {
+    "id": "SEC-1793373286467-001",
+    "timestamp": "2026-10-30T11:14:46.467633",
+    "category": "AUDIT",
+    "severity": "INFO",
+    "title": "AegisNet SOC Auditing Initialized",
+    "description": "Host telemetry initialized on DESKTOP-O52FRFD (Windows 10). Administrative Elevation: False.",
+    "source_ip": "127.0.0.1",
+    "user": "SYSTEM",
+    "action": "MONITOR_STARTED",
+    "geo": {
+      "country": "Local Host",
+      "country_code": "LOC",
+      "city": "Internal Station",
+      "lat": 37.7749,
+      "lon": -122.4194,
+      "isp": "Local Loopback / NIC",
+      "asn": "AS-LOCAL",
+      "org": "Security Operations Center",
+      "is_private": true
+    }
+  }
+]

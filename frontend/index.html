@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AegisNet // Real-Time Threat & Network Security SOC</title>
+  <meta name="description" content="Production-ready real-time network connection monitor, dynamic threat map, and native OS firewall control platform.">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            cyber: {
+              900: '#07090e',
+              800: '#0d111b',
+              700: '#151c2d',
+              cyan: '#00f3ff',
+              emerald: '#00ff88',
+              amber: '#ffaa00',
+              rose: '#ff0055',
+              blue: '#0066ff'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Leaflet.js CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="/static/css/styles.css">
+
+  <!-- Favicon & Icons -->
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/img/icon.png">
+  <link rel="apple-touch-icon" href="/static/img/icon.png">
+</head>
+<body class="bg-cyber-900 text-slate-200 cyber-grid-bg min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-black">
+
+  <!-- TOP SOC NAVIGATION BAR -->
+  <header class="sticky top-0 z-40 bg-cyber-800/90 backdrop-blur-md border-b border-cyan-500/20 px-4 py-2.5 flex flex-wrap items-center justify-between gap-4">
+    <!-- Brand / SOC Title -->
+    <div class="flex items-center space-x-3">
+      <div class="relative flex items-center justify-center w-8 h-8 rounded bg-cyan-500/10 border border-cyan-500/40 text-cyan-400 font-bold">
+        <i data-lucide="shield" class="w-4 h-4"></i>
+        <span class="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
+        </span>
+      </div>
+      <div>
+        <div class="flex items-center space-x-2">
+          <span class="font-bold tracking-wider text-sm text-white font-mono">AEGIS<span class="text-cyan-400">NET</span></span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 font-mono border border-cyan-800">SOC v1.0</span>
+        </div>
+        <div class="text-[10px] text-slate-400 font-mono">REAL-TIME THREAT & CONNECTION MONITOR</div>
+      </div>
+    </div>
+
+    <!-- System Telemetry Badges -->
+    <div class="flex items-center flex-wrap gap-2 text-xs">
+      <!-- OS Badge -->
+      <div id="sysOSBadge" class="flex items-center px-2 py-1 rounded bg-slate-800/80 border border-slate-700/60 font-mono text-[11px] text-slate-300">
+        <span class="inline-block w-2 h-2 rounded-full bg-sky-400 mr-1.5"></span> Detecting OS...
+      </div>
+
+      <!-- Hostname -->
+      <div class="flex items-center px-2 py-1 rounded bg-slate-800/80 border border-slate-700/60 font-mono text-[11px] text-slate-300">
+        <i data-lucide="server" class="w-3 h-3 text-slate-400 mr-1.5"></i>
+        <span id="sysHostname">Host</span>
+      </div>
+
+      <!-- Privilege Badge -->
+      <div id="sysAdminBadge" class="flex items-center px-2 py-1 rounded font-mono text-[11px] bg-slate-800/80 border border-slate-700/60">
+        <i data-lucide="shield" class="w-3 h-3 text-slate-400 mr-1.5"></i> Checking...
+      </div>
+
+      <!-- Stream Status -->
+      <div class="flex items-center px-2 py-1 rounded bg-slate-800/80 border border-slate-700/60 font-mono text-[11px]">
+        <div id="wsStatusLed" class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981] mr-1.5"></div>
+        <span id="wsStatusText" class="text-slate-300">CONNECTING...</span>
+      </div>
+    </div>
+
+    <!-- PRIMARY SOC MODULE NAVIGATION TABS (STICKY TOP) -->
+    <nav class="flex items-center space-x-1 bg-slate-900/90 p-1 rounded-lg border border-cyan-500/30 shadow-lg">
+      <button class="soc-nav-tab header-nav-tab px-3 py-1 rounded-md font-mono text-xs font-bold transition flex items-center bg-cyan-500/25 text-cyan-300 border border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.3)]" data-tab="network" title="Network Radar & Live Sockets">
+        <i data-lucide="radar" class="w-3.5 h-3.5 mr-1.5 text-cyan-400"></i> Network Radar
+      </button>
+      <button class="soc-nav-tab header-nav-tab px-3 py-1 rounded-md font-mono text-xs font-medium transition flex items-center text-slate-400 hover:text-amber-300 hover:bg-slate-800/80 border border-transparent" data-tab="system" title="Kernel & OS Live System Logs">
+        <i data-lucide="terminal" class="w-3.5 h-3.5 mr-1.5 text-amber-400"></i> Live System Logs
+        <span id="navHeaderSysCount" class="ml-1.5 px-1.5 py-0.2 text-[10px] rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">0</span>
+      </button>
+      <button class="soc-nav-tab header-nav-tab px-3 py-1 rounded-md font-mono text-xs font-medium transition flex items-center text-slate-400 hover:text-rose-300 hover:bg-slate-800/80 border border-transparent" data-tab="security" title="Threat Audit & Incident Logs">
+        <i data-lucide="shield-alert" class="w-3.5 h-3.5 mr-1.5 text-rose-400"></i> Security Audit
+        <span id="navHeaderSecCount" class="ml-1.5 px-1.5 py-0.2 text-[10px] rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">0</span>
+      </button>
+      <button class="soc-nav-tab header-nav-tab px-3 py-1 rounded-md font-mono text-xs font-medium transition flex items-center text-slate-400 hover:text-emerald-300 hover:bg-slate-800/80 border border-transparent" data-tab="logins" title="Authentication & Session Logons">
+        <i data-lucide="key" class="w-3.5 h-3.5 mr-1.5 text-emerald-400"></i> Login Attempts
+        <span id="navHeaderLoginsCount" class="ml-1.5 px-1.5 py-0.2 text-[10px] rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">0</span>
+      </button>
+      <button class="soc-nav-tab header-nav-tab px-3 py-1 rounded-md font-mono text-xs font-medium transition flex items-center text-slate-400 hover:text-purple-300 hover:bg-slate-800/80 border border-transparent" data-tab="split" title="Multi-Pane Split View">
+        <i data-lucide="columns" class="w-3.5 h-3.5 mr-1.5 text-purple-400"></i> Split View
+      </button>
+    </nav>
+
+    <!-- Action Toolbar Controls -->
+    <div class="flex items-center space-x-2">
+      <!-- Audio FX Toggle -->
+      <button id="toggleSoundBtn" title="Toggle Cyber Audio FX" class="p-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 transition">
+        <i data-lucide="volume-x" class="w-4 h-4 text-slate-400"></i>
+      </button>
+
+      <!-- Pause / Resume Stream -->
+      <button id="togglePauseBtn" class="flex items-center px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 font-mono text-xs text-slate-300 transition">
+        <i data-lucide="pause" class="w-3.5 h-3.5 text-cyan-400 mr-1.5"></i> Live Stream
+      </button>
+
+      <!-- Reports & SIEM Export Modal -->
+      <button id="openReportsModalBtn" class="flex items-center px-2.5 py-1.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-mono text-xs transition" title="Executive Incident Briefings, CSV & SIEM CEF Export">
+        <i data-lucide="file-text" class="w-3.5 h-3.5 mr-1.5"></i> Reports & SIEM
+      </button>
+
+      <!-- Threat Intel Lookup Button -->
+      <button id="openIntelModalBtn" class="flex items-center px-2.5 py-1.5 rounded bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 font-mono text-xs transition" title="Query Threat Reputation & Tor Exit Nodes">
+        <i data-lucide="shield-alert" class="w-3.5 h-3.5 mr-1.5 text-purple-400"></i> Threat Intel
+      </button>
+
+      <!-- Firewall Rules Manager -->
+      <button id="openRulesModalBtn" class="flex items-center px-3 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-mono text-xs transition">
+        <i data-lucide="shield" class="w-3.5 h-3.5 mr-1.5"></i> Firewall Rules
+      </button>
+
+      <!-- Author / About Button -->
+      <button id="openAboutModalBtn" class="flex items-center px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-cyan-400 font-mono text-xs transition" title="About AegisNet SOC & Author Mehdi Mirzaei">
+        <i data-lucide="info" class="w-3.5 h-3.5 mr-1.5 text-cyan-400"></i> About
+      </button>
+
+      <!-- Exit App Button (Visible in Desktop Mode) -->
+      <button id="desktopExitBtn" class="hidden flex items-center px-2.5 py-1.5 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 font-mono text-xs transition" title="Exit Desktop Application">
+        <i data-lucide="power" class="w-3.5 h-3.5 mr-1.5 text-rose-400"></i> Exit
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN SOC DASHBOARD CONTENT -->
+  <main class="flex-1 p-4 max-w-[1780px] w-full mx-auto space-y-4">
+
+    <!-- EXPANDED KPI / TELEMETRY METRIC CARDS -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5">
+      <!-- Active Connections -->
+      <div class="cyber-card rounded-lg p-2.5 relative overflow-hidden">
+        <div class="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+          <span>ACTIVE SOCKETS</span>
+          <i data-lucide="activity" class="w-3.5 h-3.5 text-cyan-400"></i>
+        </div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="metricTotalConns" class="text-xl font-bold font-mono text-white tracking-tight">0</span>
+          <span class="text-[10px] font-mono text-cyan-400"><span id="metricEstablished">0</span> est</span>
+        </div>
+      </div>
+
+      <!-- Outbound Bandwidth -->
+      <div class="cyber-card rounded-lg p-2.5 relative overflow-hidden">
+        <div class="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+          <span>UPLOAD (TX)</span>
+          <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-emerald-400"></i>
+        </div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="metricTxRate" class="text-xl font-bold font-mono text-emerald-400 tracking-tight">0.0 KB/s</span>
+          <span class="text-[10px] font-mono text-slate-400"><span id="metricTxTotal">0</span></span>
+        </div>
+      </div>
+
+      <!-- Inbound Bandwidth -->
+      <div class="cyber-card rounded-lg p-2.5 relative overflow-hidden">
+        <div class="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+          <span>DOWNLOAD (RX)</span>
+          <i data-lucide="arrow-down-left" class="w-3.5 h-3.5 text-cyan-400"></i>
+        </div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="metricRxRate" class="text-xl font-bold font-mono text-cyan-400 tracking-tight">0.0 KB/s</span>
+          <span class="text-[10px] font-mono text-slate-400"><span id="metricRxTotal">0</span></span>
+        </div>
+      </div>
+
+      <!-- Active Endpoints -->
+      <div class="cyber-card rounded-lg p-2.5 relative overflow-hidden">
+        <div class="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+          <span>REMOTE WAN</span>
+          <i data-lucide="globe" class="w-3.5 h-3.5 text-purple-400"></i>
+        </div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="metricActiveRemote" class="text-xl font-bold font-mono text-purple-400 tracking-tight">0</span>
+          <span class="text-[10px] font-mono text-slate-400">Mapped</span>
+        </div>
+      </div>
+
+      <!-- System Logs & Alerts (Clickable) -->
+      <div id="kpiCardSystemLogs" class="cyber-card rounded-lg p-2.5 relative overflow-hidden cursor-pointer hover:border-cyan-400 transition" title="Click to view System Event Logs">
+        <div class="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+          <span>SYSTEM ALERTS</span>
+          <i data-lucide="terminal" class="w-3.5 h-3.5 text-amber-400"></i>
+        </div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="kpiSysErrors" class="text-xs font-bold font-mono text-amber-300 tracking-tight">0 err / 0 warn</span>
+          <span class="text-[10px] font-mono text-cyan-400 flex items-center">View <i data-lucide="chevron-right" class="w-2.5 h-2.5 ml-0.5"></i></span>
+        </div>
+      </div>
+
+      <!-- Security Audit Incidents (Clickable) -->
+      <div id="kpiCardSecurityLogs" class="cyber-card rounded-lg p-2.5 relative overflow-hidden cursor-pointer hover:border-rose-400 transition" title="Click to view Security Incident Log">
+        <div class="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+          <span>SECURITY THREATS</span>
+          <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-rose-400"></i>
+        </div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="kpiSecIncidents" class="text-xl font-bold font-mono text-rose-400 tracking-tight">0</span>
+          <span class="text-[10px] font-mono text-rose-300">Audited</span>
+        </div>
+      </div>
+
+      <!-- Login Attempts & Sessions (Clickable) -->
+      <div id="kpiCardLoginAttempts" class="cyber-card rounded-lg p-2.5 relative overflow-hidden cursor-pointer hover:border-emerald-400 transition" title="Click to view Authentication & Login Attempts">
+        <div class="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+          <span>LOGINS (24H)</span>
+          <i data-lucide="key" class="w-3.5 h-3.5 text-emerald-400"></i>
+        </div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="kpiLoginsTotal" class="text-xs font-bold font-mono text-emerald-300 tracking-tight">0 (0 fail)</span>
+          <span class="text-[10px] font-mono text-emerald-400 flex items-center">Auth <i data-lucide="chevron-right" class="w-2.5 h-2.5 ml-0.5"></i></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SOC VIEW NAVIGATION TAB BAR -->
+    <div class="flex items-center space-x-1 border-b border-cyan-500/20 bg-cyber-900/90 px-1 pt-1 overflow-x-auto">
+      <button class="soc-nav-tab px-3.5 py-2 rounded-t-lg font-mono text-xs font-bold transition flex items-center border-b-2 border-cyan-400 bg-cyber-800 text-cyan-300" data-tab="network">
+        <i data-lucide="radar" class="w-3.5 h-3.5 mr-1.5 text-cyan-400"></i> Network Radar & Sockets
+      </button>
+      <button class="soc-nav-tab px-3.5 py-2 rounded-t-lg font-mono text-xs font-medium transition flex items-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40" data-tab="system">
+        <i data-lucide="terminal" class="w-3.5 h-3.5 mr-1.5 text-amber-400"></i> Live System Logs
+      </button>
+      <button class="soc-nav-tab px-3.5 py-2 rounded-t-lg font-mono text-xs font-medium transition flex items-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40" data-tab="security">
+        <i data-lucide="shield-alert" class="w-3.5 h-3.5 mr-1.5 text-rose-400"></i> Security Logs & Threat Audit
+      </button>
+      <button class="soc-nav-tab px-3.5 py-2 rounded-t-lg font-mono text-xs font-medium transition flex items-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40" data-tab="logins">
+        <i data-lucide="key" class="w-3.5 h-3.5 mr-1.5 text-emerald-400"></i> Login Attempts & Sessions
+      </button>
+      <button class="soc-nav-tab px-3.5 py-2 rounded-t-lg font-mono text-xs font-medium transition flex items-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40" data-tab="split">
+        <i data-lucide="columns" class="w-3.5 h-3.5 mr-1.5 text-purple-400"></i> All-In-One Split View
+      </button>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- TAB 1: NETWORK RADAR & SOCKETS SECTION -->
+    <!-- ================================================================= -->
+    <section id="sectionNetworkRadar" class="space-y-4">
+      <!-- SOC MODULE QUICK JUMP BANNER -->
+      <div class="flex flex-wrap items-center justify-between p-2.5 rounded-lg bg-cyber-800/80 border border-cyan-500/30 text-xs font-mono gap-2">
+        <div class="flex items-center space-x-2 text-slate-300">
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+          <span class="font-bold text-cyan-300">SOC MODULE QUICK JUMP:</span>
+          <span class="text-slate-400 hidden sm:inline">// Access Real-Time Kernel, Security & Authentication Event Feeds</span>
+        </div>
+        <div class="flex items-center flex-wrap gap-2">
+          <button onclick="window.aegisLogs && window.aegisLogs.switchTab('system')" class="px-3 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center font-bold transition shadow-sm">
+            <i data-lucide="terminal" class="w-3.5 h-3.5 mr-1.5 text-amber-400"></i> Open Live System Logs
+          </button>
+          <button onclick="window.aegisLogs && window.aegisLogs.switchTab('security')" class="px-3 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/40 text-rose-300 flex items-center font-bold transition shadow-sm">
+            <i data-lucide="shield-alert" class="w-3.5 h-3.5 mr-1.5 text-rose-400"></i> Open Security Audit
+          </button>
+          <button onclick="window.aegisLogs && window.aegisLogs.switchTab('logins')" class="px-3 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center font-bold transition shadow-sm">
+            <i data-lucide="key" class="w-3.5 h-3.5 mr-1.5 text-emerald-400"></i> Open Login Attempts
+          </button>
+        </div>
+      </div>
+
+      <!-- UPPER SECTION: MAP (LEFT 3 COLS) + SIDEBAR PANELS (RIGHT 1 COL) -->
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 items-start">
+        
+        <!-- MAP SECTION (LEFT 3 COLS) -->
+        <div class="lg:col-span-3 cyber-card rounded-lg overflow-hidden border border-cyan-500/20 flex flex-col">
+          <!-- Map Header & Controls -->
+          <div class="px-4 py-2 bg-cyber-800/80 border-b border-cyan-500/15 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="radar" class="w-4 h-4 text-cyan-400 animate-spin" style="animation-duration: 8s;"></i>
+              <span class="font-bold text-white tracking-wider">LIVE GLOBAL THREAT & CONNECTION VECTOR MAP</span>
+              <span class="text-slate-400 text-[11px] hidden sm:inline">// Animated Flow Arcs</span>
+            </div>
+
+            <div class="flex items-center flex-wrap gap-2">
+              <!-- Protocol Filters on Map -->
+              <div class="flex items-center space-x-1 text-[11px] font-mono bg-slate-900/90 p-0.5 rounded border border-slate-700/80">
+                <span class="text-[10px] text-slate-400 px-1.5 flex items-center"><i data-lucide="filter" class="w-3 h-3 mr-1 text-cyan-400"></i> FILTER:</span>
+                <button class="map-proto-pill px-2 py-0.5 rounded border border-cyan-500/50 bg-cyan-500/20 text-cyan-300 font-bold transition" data-proto="ALL">ALL</button>
+                <button class="map-proto-pill px-2 py-0.5 rounded border border-transparent text-emerald-400 hover:text-white transition" data-proto="HTTPS">HTTPS</button>
+                <button class="map-proto-pill px-2 py-0.5 rounded border border-transparent text-sky-400 hover:text-white transition" data-proto="DNS">DNS</button>
+                <button class="map-proto-pill px-2 py-0.5 rounded border border-transparent text-amber-400 hover:text-white transition" data-proto="SSH">SSH/RDP</button>
+                <button class="map-proto-pill px-2 py-0.5 rounded border border-transparent text-purple-400 hover:text-white transition" data-proto="OTHER">OTHER</button>
+              </div>
+
+              <!-- Toggle Basemap Mode -->
+              <button id="toggleMapModeBtn" title="Switch between Local Offline Vector Map and OpenStreetMap Tiles" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition text-[11px] border border-slate-700 flex items-center">
+                <i data-lucide="layers" class="w-3 h-3 mr-1 text-cyan-400"></i> <span id="mapModeLabel">Vector (Zero-API)</span>
+              </button>
+
+              <!-- Reset Zoom Button -->
+              <button id="resetMapBtn" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition text-[11px] border border-slate-700 flex items-center">
+                <i data-lucide="crosshair" class="w-3 h-3 mr-1 text-cyan-400"></i> Center Host
+              </button>
+            </div>
+          </div>
+
+          <!-- Map Canvas & Leaflet Container -->
+          <div class="relative w-full h-[520px] lg:h-[620px]">
+            <div id="worldMap" class="w-full h-full z-10"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT TELEMETRY PANELS (ALIGNED WITH MAP ON RIGHT) -->
+        <div class="lg:col-span-1 space-y-3">
+          <!-- TOP COUNTRIES PANEL -->
+          <div class="cyber-card rounded-lg p-3">
+            <div class="flex items-center justify-between text-xs font-mono font-bold text-slate-300 pb-2 border-b border-slate-800">
+              <span class="flex items-center"><i data-lucide="map-pin" class="w-3.5 h-3.5 text-cyan-400 mr-1.5"></i> TOP REMOTE REGIONS</span>
+            </div>
+            <div id="telemetryTopCountries" class="mt-2.5 space-y-2">
+              <div class="text-slate-500 font-mono text-xs text-center py-2">Analyzing destinations...</div>
+            </div>
+          </div>
+
+          <!-- TOP PROCESSES PANEL -->
+          <div class="cyber-card rounded-lg p-3">
+            <div class="flex items-center justify-between text-xs font-mono font-bold text-slate-300 pb-2 border-b border-slate-800">
+              <span class="flex items-center"><i data-lucide="cpu" class="w-3.5 h-3.5 text-emerald-400 mr-1.5"></i> ACTIVE PROCESSES</span>
+            </div>
+            <div id="telemetryTopProcesses" class="mt-2 divide-y divide-slate-800/60 max-h-[135px] overflow-y-auto">
+              <div class="text-slate-500 font-mono text-xs text-center py-2">Scanning sockets...</div>
+            </div>
+          </div>
+
+          <!-- PROTOCOLS PANEL -->
+          <div class="cyber-card rounded-lg p-3">
+            <div class="flex items-center justify-between text-xs font-mono font-bold text-slate-300 pb-2 border-b border-slate-800">
+              <span class="flex items-center"><i data-lucide="layers" class="w-3.5 h-3.5 text-purple-400 mr-1.5"></i> PROTOCOL DISTRIBUTION</span>
+            </div>
+            <div id="telemetryProtocols" class="mt-2 divide-y divide-slate-800/60 max-h-[125px] overflow-y-auto">
+              <div class="text-slate-500 font-mono text-xs text-center py-2">Calculating...</div>
+            </div>
+          </div>
+
+          <!-- AUDIT EVENT LOG -->
+          <div class="cyber-card rounded-lg p-3">
+            <div class="flex items-center justify-between text-xs font-mono font-bold text-slate-300 pb-2 border-b border-slate-800">
+              <span class="flex items-center"><i data-lucide="terminal" class="w-3.5 h-3.5 text-amber-400 mr-1.5"></i> OPERATOR AUDIT LOG</span>
+            </div>
+            <div id="telemetryEventLog" class="mt-2 max-h-[125px] overflow-y-auto space-y-1">
+              <div class="text-slate-500 font-mono text-[11px] py-1">[Ready] AegisNet Engine listening.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LOWER SECTION: FULL-WIDTH REAL-TIME CONNECTIONS TABLE -->
+      <div class="cyber-card rounded-lg overflow-hidden flex flex-col border border-cyan-500/20">
+        <!-- Table Toolbar -->
+        <div class="p-3 bg-cyber-800/80 border-b border-cyan-500/15 flex flex-wrap items-center justify-between gap-3">
+          <!-- Search Input -->
+          <div class="relative flex-1 min-w-[220px] max-w-md">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
+            <input id="tableSearchInput" type="text" placeholder="Filter by IP, Port, Process, Country, Protocol..." 
+                   class="w-full pl-9 pr-3 py-1.5 bg-slate-900/90 border border-slate-700 rounded text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono transition">
+          </div>
+
+          <!-- Protocol Filter Pills -->
+          <div class="flex items-center space-x-1 text-xs font-mono">
+            <button class="proto-filter-pill px-2.5 py-1 rounded border border-cyan-500/40 bg-cyan-500/20 text-cyan-300" data-protocol="ALL">ALL</button>
+            <button class="proto-filter-pill px-2.5 py-1 rounded border border-transparent text-slate-400 hover:text-slate-200" data-protocol="HTTPS">HTTPS/HTTP</button>
+            <button class="proto-filter-pill px-2.5 py-1 rounded border border-transparent text-slate-400 hover:text-slate-200" data-protocol="DNS">DNS</button>
+            <button class="proto-filter-pill px-2.5 py-1 rounded border border-transparent text-slate-400 hover:text-slate-200" data-protocol="SSH">SSH/RDP</button>
+            <button class="proto-filter-pill px-2.5 py-1 rounded border border-transparent text-slate-400 hover:text-slate-200" data-protocol="OTHER">OTHER</button>
+            <button class="proto-filter-pill px-2.5 py-1 rounded border border-rose-500/40 text-rose-300 hover:bg-rose-500/20 transition flex items-center" data-protocol="THREAT">
+              <i data-lucide="shield-alert" class="w-3 h-3 mr-1 text-rose-400"></i> Threats Only
+            </button>
+          </div>
+
+          <!-- Table Count -->
+          <div id="tableFilteredCount" class="text-xs font-mono text-slate-400">
+            0 shown
+          </div>
+        </div>
+
+        <!-- Table Body -->
+        <div class="overflow-x-auto max-h-[520px]">
+          <table class="cyber-table w-full text-left border-collapse">
+            <thead class="sticky top-0 bg-cyber-800/95 backdrop-blur border-b border-slate-700/80 text-[11px] font-mono text-slate-400 uppercase tracking-wider z-20">
+              <tr>
+                <th class="py-2.5 px-3">Process / PID</th>
+                <th class="py-2.5 px-3">Protocol</th>
+                <th class="py-2.5 px-3">Local Endpoint</th>
+                <th class="py-2.5 px-3">Direction</th>
+                <th class="py-2.5 px-3">Remote Endpoint & Geo</th>
+                <th class="py-2.5 px-3">Threat Reputation</th>
+                <th class="py-2.5 px-3">State</th>
+                <th class="py-2.5 px-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="connectionsTableBody" class="divide-y divide-slate-800/40">
+              <tr>
+                <td colspan="8" class="text-center py-10 text-slate-500 font-mono text-xs">
+                  Awaiting real-time telemetry stream...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 2: LIVE SYSTEM LOGS SECTION -->
+    <!-- ================================================================= -->
+    <section id="sectionSystemLogs" class="space-y-4 hidden">
+      <div class="cyber-card rounded-lg overflow-hidden flex flex-col border border-cyan-500/20">
+        <!-- Toolbar Header -->
+        <div class="p-3 bg-cyber-800/90 border-b border-cyan-500/15 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="terminal" class="w-4 h-4 text-amber-400"></i>
+            <span class="font-bold text-white tracking-wider">HOST SYSTEM EVENT LOG STREAM</span>
+            <span class="text-slate-400 text-[11px]">// Windows System Channel & Kernel Telemetry</span>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <!-- Live Tail Button -->
+            <button id="sysLogTailBtn" class="flex items-center px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] border border-slate-700 transition">
+              <div id="sysLogTailLed" class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981] mr-1.5"></div>
+              <span>Live Tail</span>
+            </button>
+
+            <!-- Refresh Button -->
+            <button id="sysLogRefreshBtn" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] border border-slate-700 flex items-center transition">
+              <i data-lucide="refresh-cw" class="w-3 h-3 mr-1 text-cyan-400"></i> Refresh
+            </button>
+
+            <!-- Export Button -->
+            <button id="sysLogExportBtn" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] border border-slate-700 flex items-center transition">
+              <i data-lucide="download" class="w-3 h-3 mr-1 text-cyan-400"></i> Export JSON
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter Sub-bar -->
+        <div class="px-4 py-2.5 bg-cyber-900/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+          <!-- Search Input -->
+          <div class="relative flex-1 min-w-[240px] max-w-md">
+            <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-2 text-slate-400"></i>
+            <input id="sysLogSearch" type="text" placeholder="Filter by message, source provider, event ID..." 
+                   class="w-full pl-8 pr-3 py-1 bg-slate-950 border border-slate-700 rounded text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400">
+          </div>
+
+          <!-- Severity Level Filter Pills -->
+          <div class="flex items-center space-x-1">
+            <span class="text-slate-400 text-[11px] mr-1">LEVEL:</span>
+            <button class="sys-level-pill px-2.5 py-1 rounded text-xs border border-cyan-500/50 bg-cyan-500/20 text-cyan-300 font-bold" data-level="ALL">ALL</button>
+            <button class="sys-level-pill px-2.5 py-1 rounded text-xs border border-transparent text-rose-400 hover:text-white" data-level="ERROR">ERROR</button>
+            <button class="sys-level-pill px-2.5 py-1 rounded text-xs border border-transparent text-amber-400 hover:text-white" data-level="WARNING">WARNING</button>
+            <button class="sys-level-pill px-2.5 py-1 rounded text-xs border border-transparent text-sky-400 hover:text-white" data-level="INFO">INFO</button>
+            <button class="sys-level-pill px-2.5 py-1 rounded text-xs border border-transparent text-emerald-400 hover:text-white" data-level="AUDIT">AUDIT</button>
+          </div>
+
+          <div id="sysLogFilteredCount" class="text-slate-400 text-xs">
+            Loading system events...
+          </div>
+        </div>
+
+        <!-- System Logs Table -->
+        <div class="overflow-x-auto max-h-[600px]">
+          <table class="cyber-table w-full text-left border-collapse">
+            <thead class="sticky top-0 bg-cyber-800/95 backdrop-blur border-b border-slate-700 text-[11px] font-mono text-slate-400 uppercase tracking-wider z-20">
+              <tr>
+                <th class="py-2.5 px-3">Timestamp</th>
+                <th class="py-2.5 px-3">Severity</th>
+                <th class="py-2.5 px-3">Source Provider</th>
+                <th class="py-2.5 px-3">Event ID</th>
+                <th class="py-2.5 px-3">Description / Message</th>
+                <th class="py-2.5 px-3 text-right">Inspect</th>
+              </tr>
+            </thead>
+            <tbody id="sysLogsTableBody" class="divide-y divide-slate-800/40">
+              <tr>
+                <td colspan="6" class="text-center py-10 text-slate-500 font-mono text-xs">
+                  Connecting to OS event log stream...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 3: SECURITY LOGS & THREAT AUDIT SECTION -->
+    <!-- ================================================================= -->
+    <section id="sectionSecurityLogs" class="space-y-4 hidden">
+      <!-- Privilege Level Information Banner -->
+      <div class="cyber-card rounded-lg p-3 bg-cyber-800/70 border border-slate-700 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+        <div class="flex items-center space-x-2.5">
+          <div class="p-1.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+            <i data-lucide="shield" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <div class="text-slate-200 font-semibold">SECURITY AUDIT ENGINE: HOST TELEMETRY ACTIVE</div>
+            <div class="text-slate-400 text-[11px]">Direct monitoring of privileged process executions, firewall interventions, user account changes, and socket threats.</div>
+          </div>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button id="secInjectModalBtn" class="flex items-center px-3 py-1.5 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition">
+            <i data-lucide="plus-circle" class="w-3.5 h-3.5 mr-1.5"></i> Simulate Security Incident
+          </button>
+          <button id="secLogRefreshBtn" class="flex items-center px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+            <i data-lucide="refresh-cw" class="w-3 h-3 mr-1 text-cyan-400"></i> Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Security Table Card -->
+      <div class="cyber-card rounded-lg overflow-hidden flex flex-col border border-cyan-500/20">
+        <!-- Filter Sub-bar -->
+        <div class="p-3 bg-cyber-800/90 border-b border-cyan-500/15 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+          <!-- Category Pills -->
+          <div class="flex items-center space-x-1">
+            <span class="text-slate-400 text-[11px] mr-1">CATEGORY:</span>
+            <button class="sec-cat-pill px-2.5 py-1 rounded text-xs border border-cyan-500/50 bg-cyan-500/20 text-cyan-300 font-bold" data-cat="ALL">ALL</button>
+            <button class="sec-cat-pill px-2.5 py-1 rounded text-xs border border-transparent text-slate-400 hover:text-white" data-cat="AUTHENTICATION">AUTHENTICATION</button>
+            <button class="sec-cat-pill px-2.5 py-1 rounded text-xs border border-transparent text-slate-400 hover:text-white" data-cat="PROCESS">PROCESS</button>
+            <button class="sec-cat-pill px-2.5 py-1 rounded text-xs border border-transparent text-slate-400 hover:text-white" data-cat="FIREWALL">FIREWALL</button>
+            <button class="sec-cat-pill px-2.5 py-1 rounded text-xs border border-transparent text-slate-400 hover:text-white" data-cat="PRIVILEGE">PRIVILEGE</button>
+            <button class="sec-cat-pill px-2.5 py-1 rounded text-xs border border-transparent text-slate-400 hover:text-white" data-cat="AUDIT">AUDIT</button>
+          </div>
+
+          <!-- Severity Filters -->
+          <div class="flex items-center space-x-1">
+            <span class="text-slate-400 text-[11px] mr-1">SEVERITY:</span>
+            <button class="sec-sev-pill px-2 py-0.5 rounded text-[11px] border border-cyan-500/50 bg-cyan-500/20 text-cyan-300 font-bold" data-sev="ALL">ALL</button>
+            <button class="sec-sev-pill px-2 py-0.5 rounded text-[11px] border border-transparent text-rose-400 hover:text-white" data-sev="CRITICAL">CRITICAL</button>
+            <button class="sec-sev-pill px-2 py-0.5 rounded text-[11px] border border-transparent text-rose-300 hover:text-white" data-sev="HIGH">HIGH</button>
+            <button class="sec-sev-pill px-2 py-0.5 rounded text-[11px] border border-transparent text-amber-400 hover:text-white" data-sev="MEDIUM">MEDIUM</button>
+            <button class="sec-sev-pill px-2 py-0.5 rounded text-[11px] border border-transparent text-sky-400 hover:text-white" data-sev="INFO">INFO</button>
+          </div>
+
+          <!-- Search -->
+          <div class="relative min-w-[200px]">
+            <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-2 text-slate-400"></i>
+            <input id="secLogSearch" type="text" placeholder="Search security incidents..." 
+                   class="w-full pl-8 pr-3 py-1 bg-slate-950 border border-slate-700 rounded text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400">
+          </div>
+
+          <div id="secLogFilteredCount" class="text-slate-400 text-xs">
+            0 incidents
+          </div>
+        </div>
+
+        <!-- Security Incidents Table -->
+        <div class="overflow-x-auto max-h-[600px]">
+          <table class="cyber-table w-full text-left border-collapse">
+            <thead class="sticky top-0 bg-cyber-800/95 backdrop-blur border-b border-slate-700 text-[11px] font-mono text-slate-400 uppercase tracking-wider z-20">
+              <tr>
+                <th class="py-2.5 px-3">Timestamp</th>
+                <th class="py-2.5 px-3">Severity</th>
+                <th class="py-2.5 px-3">Category</th>
+                <th class="py-2.5 px-3">Incident Title & Details</th>
+                <th class="py-2.5 px-3">User / Target</th>
+                <th class="py-2.5 px-3">Source IP</th>
+                <th class="py-2.5 px-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="securityLogsTableBody" class="divide-y divide-slate-800/40">
+              <tr>
+                <td colspan="7" class="text-center py-10 text-slate-500 font-mono text-xs">
+                  Loading security incidents...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 4: LOGIN ATTEMPTS & ACTIVE SESSIONS SECTION -->
+    <!-- ================================================================= -->
+    <section id="sectionLoginAttempts" class="space-y-4 hidden">
+      <!-- Brute-Force Alert Banner (dynamic) -->
+      <div id="bruteForceAlertBanner" class="hidden cyber-card rounded-lg p-3 bg-rose-950/70 border border-rose-500 flex items-center justify-between text-rose-200 cyber-glow-rose">
+        <div class="flex items-center space-x-3">
+          <i data-lucide="alert-triangle" class="w-5 h-5 text-rose-400 animate-bounce"></i>
+          <div>
+            <div id="bruteForceRiskText" class="font-bold text-sm">HIGH ALERT: Brute-Force Authentication Anomaly Detected!</div>
+            <div class="text-[11px] text-rose-300">Repeated credential failures detected in quick succession. Immediate IP containment recommended.</div>
+          </div>
+        </div>
+        <button onclick="document.getElementById('openRulesModalBtn').click()" class="px-3 py-1.5 rounded bg-rose-600 hover:bg-rose-500 text-white font-mono text-xs font-bold transition">
+          View Firewall Controls
+        </button>
+      </div>
+
+      <!-- Top Widgets: Active Sessions & Quick Action -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <!-- Active Interactive Host Sessions -->
+        <div class="lg:col-span-2 cyber-card rounded-lg p-3.5 space-y-2 border border-slate-800">
+          <div class="flex items-center justify-between text-xs font-mono font-bold text-slate-300 pb-2 border-b border-slate-800">
+            <span class="flex items-center"><i data-lucide="user-check" class="w-4 h-4 text-emerald-400 mr-1.5"></i> ACTIVE HOST LOGGED-IN SESSIONS</span>
+            <span class="text-[11px] text-slate-400 font-normal">Console & RDP Sessions</span>
+          </div>
+          <div id="activeSessionsList" class="space-y-1.5">
+            <div class="text-slate-500 font-mono text-xs py-2">Querying active sessions...</div>
+          </div>
+        </div>
+
+        <!-- Quick Simulate Login Box -->
+        <div class="cyber-card rounded-lg p-3.5 space-y-2.5 border border-slate-800 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between text-xs font-mono font-bold text-slate-300 pb-2 border-b border-slate-800">
+              <span class="flex items-center"><i data-lucide="test-tube-2" class="w-4 h-4 text-cyan-400 mr-1.5"></i> AUTH INCIDENT TESTER</span>
+            </div>
+            <p class="text-[11px] text-slate-400 font-mono mt-2">
+              Inject simulated failed logons or brute-force credential sprays to test SOC incident detection and firewall triggers.
+            </p>
+          </div>
+          <button id="openSimulateLoginBtn" class="w-full flex items-center justify-center px-3 py-2 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold transition">
+            <i data-lucide="shield-alert" class="w-3.5 h-3.5 mr-1.5"></i> Simulate Authentication Attempt
+          </button>
+        </div>
+      </div>
+
+      <!-- Login Attempts Table Card -->
+      <div class="cyber-card rounded-lg overflow-hidden flex flex-col border border-cyan-500/20">
+        <!-- Filter Sub-bar -->
+        <div class="p-3 bg-cyber-800/90 border-b border-cyan-500/15 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+          <!-- Status Pills -->
+          <div class="flex items-center space-x-1">
+            <span class="text-slate-400 text-[11px] mr-1">STATUS:</span>
+            <button class="login-status-pill px-2.5 py-1 rounded text-xs border border-cyan-500/50 bg-cyan-500/20 text-cyan-300 font-bold" data-status="ALL">ALL</button>
+            <button class="login-status-pill px-2.5 py-1 rounded text-xs border border-transparent text-emerald-400 hover:text-white" data-status="SUCCESS">SUCCESS</button>
+            <button class="login-status-pill px-2.5 py-1 rounded text-xs border border-transparent text-rose-400 hover:text-white" data-status="FAILED">FAILED</button>
+            <button class="login-status-pill px-2.5 py-1 rounded text-xs border border-transparent text-slate-400 hover:text-white" data-status="LOGOFF">LOGOFF / DISCONNECT</button>
+          </div>
+
+          <!-- Search -->
+          <div class="relative min-w-[220px]">
+            <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-2 text-slate-400"></i>
+            <input id="loginSearch" type="text" placeholder="Search user, IP, workstation..." 
+                   class="w-full pl-8 pr-3 py-1 bg-slate-950 border border-slate-700 rounded text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400">
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <div id="loginFilteredCount" class="text-slate-400 text-xs mr-2">
+              0 logons
+            </div>
+            <button id="loginRefreshBtn" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] border border-slate-700 flex items-center transition">
+              <i data-lucide="refresh-cw" class="w-3 h-3 mr-1 text-cyan-400"></i> Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- Login Attempts Table -->
+        <div class="overflow-x-auto max-h-[600px]">
+          <table class="cyber-table w-full text-left border-collapse">
+            <thead class="sticky top-0 bg-cyber-800/95 backdrop-blur border-b border-slate-700 text-[11px] font-mono text-slate-400 uppercase tracking-wider z-20">
+              <tr>
+                <th class="py-2.5 px-3">Status</th>
+                <th class="py-2.5 px-3">Timestamp</th>
+                <th class="py-2.5 px-3">User Account</th>
+                <th class="py-2.5 px-3">Logon Type</th>
+                <th class="py-2.5 px-3">Source Endpoint & Geo</th>
+                <th class="py-2.5 px-3">Authentication Result</th>
+                <th class="py-2.5 px-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="loginAttemptsTableBody" class="divide-y divide-slate-800/40">
+              <tr>
+                <td colspan="7" class="text-center py-10 text-slate-500 font-mono text-xs">
+                  Loading authentication audit events...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 5: ALL-IN-ONE SPLIT VIEW SECTION -->
+    <!-- ================================================================= -->
+    <section id="sectionSplitView" class="space-y-4 hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Left: Mini Map or Sockets -->
+        <div class="cyber-card rounded-lg overflow-hidden flex flex-col p-3">
+          <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800 text-xs font-mono font-bold text-slate-300">
+            <span class="flex items-center"><i data-lucide="activity" class="w-4 h-4 text-cyan-400 mr-1.5"></i> ACTIVE SYSTEM TELEMETRY FEED</span>
+            <span class="text-[11px] text-slate-400">Live Synchronized</span>
+          </div>
+          <div class="overflow-y-auto max-h-[500px]">
+            <table class="cyber-table w-full text-left border-collapse text-xs font-mono">
+              <thead class="sticky top-0 bg-cyber-800 border-b border-slate-700 text-[10px] text-slate-400">
+                <tr>
+                  <th class="py-2 px-2">Time</th>
+                  <th class="py-2 px-2">Level</th>
+                  <th class="py-2 px-2">Source</th>
+                  <th class="py-2 px-2">Message</th>
+                </tr>
+              </thead>
+              <tbody id="splitSysLogsTableBody" class="divide-y divide-slate-800/60">
+                <tr><td colspan="4" class="py-8 text-center text-slate-500">Awaiting stream...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right: Real-Time Sockets in Split View -->
+        <div class="cyber-card rounded-lg overflow-hidden flex flex-col p-3">
+          <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800 text-xs font-mono font-bold text-slate-300">
+            <span class="flex items-center"><i data-lucide="shield-alert" class="w-4 h-4 text-rose-400 mr-1.5"></i> RECENT SECURITY INCIDENTS</span>
+            <span class="text-[11px] text-cyan-400">Live Threats</span>
+          </div>
+          <div class="overflow-y-auto max-h-[500px] space-y-2">
+            <div class="text-slate-400 text-xs font-mono">Switch to the dedicated Security tab for complete dossier details and one-click firewall drops.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- SLIDE-OUT IP INSPECTOR DRAWER -->
+  <div id="inspectorBackdrop" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden transition-opacity"></div>
+  <aside id="inspectorDrawer" class="fixed top-0 right-0 h-full w-full max-w-md bg-cyber-800/95 backdrop-blur-xl border-l border-cyan-500/30 z-50 transform translate-x-full slide-drawer flex flex-col shadow-2xl">
+    <!-- Drawer Header -->
+    <div class="px-5 py-4 border-b border-cyan-500/20 flex items-center justify-between bg-cyber-900/80">
+      <div>
+        <div class="flex items-center space-x-2">
+          <span class="font-bold text-lg font-mono text-cyan-300" id="inspectorIP">0.0.0.0</span>
+          <button id="inspectorCopyBtn" title="Copy IP" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+          </button>
+          <span id="inspectorBlockedBadge" class="hidden px-2 py-0.5 rounded text-[10px] font-mono bg-rose-500/20 text-rose-400 border border-rose-500/40">BLOCKED</span>
+          <span id="inspectorPrivateBadge" class="hidden px-2 py-0.5 rounded text-[10px] font-mono bg-purple-500/20 text-purple-400 border border-purple-500/40">LAN / LOCAL</span>
+        </div>
+        <div id="inspectorCityCountry" class="text-xs text-slate-400 font-sans mt-0.5">Resolving GeoIP...</div>
+      </div>
+      <button id="closeInspectorBtn" class="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+
+    <!-- Drawer Body -->
+    <div class="flex-1 overflow-y-auto p-5 space-y-4 text-xs font-mono">
+      <!-- Live Threat Intelligence Dossier Banner -->
+      <div id="inspectorThreatBanner" class="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 text-xs font-mono">
+        <span class="text-cyan-400 animate-pulse font-bold">Querying Threat Intelligence Feeds...</span>
+      </div>
+      <div class="cyber-card rounded-lg p-4 space-y-2.5 border-cyan-500/30">
+        <div class="font-bold text-slate-300 text-[11px] uppercase tracking-wider mb-2 flex items-center">
+          <i data-lucide="zap" class="w-3.5 h-3.5 text-cyan-400 mr-1.5"></i> Emergency Response Actions
+        </div>
+
+        <!-- Terminate Process -->
+        <button id="inspectorTerminateBtn" class="w-full flex items-center justify-center px-4 py-2.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-semibold transition">
+          <i data-lucide="power" class="w-4 h-4 mr-1.5"></i> Terminate Connection (Kill Process)
+        </button>
+
+        <!-- Permanent Firewall Block -->
+        <button id="inspectorBlockBtn" class="w-full flex items-center justify-center px-4 py-2.5 rounded bg-rose-600/25 hover:bg-rose-600/40 text-rose-300 border border-rose-500/50 font-semibold transition">
+          <i data-lucide="shield-alert" class="w-4 h-4 mr-1.5"></i> Permanent Firewall Block (OS Drop)
+        </button>
+
+        <!-- Unblock Button -->
+        <button id="inspectorUnblockBtn" class="hidden w-full flex items-center justify-center px-4 py-2.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 font-semibold transition">
+          <i data-lucide="shield-check" class="w-4 h-4 mr-1.5"></i> Remove Firewall Block
+        </button>
+      </div>
+
+      <!-- GEOGRAPHIC & ISP INTELLIGENCE -->
+      <div class="cyber-card rounded-lg p-4 space-y-2 border-slate-800">
+        <div class="font-bold text-slate-300 text-[11px] uppercase tracking-wider mb-2 flex items-center justify-between">
+          <span class="flex items-center"><i data-lucide="map" class="w-3.5 h-3.5 text-purple-400 mr-1.5"></i> GeoIP & ISP Intelligence</span>
+          <button id="inspectorLocateBtn" class="text-[10px] text-cyan-400 hover:underline flex items-center">
+            <i data-lucide="crosshair" class="w-3 h-3 mr-0.5"></i> Locate on Map
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-slate-400">
+          <div>
+            <div class="text-[10px] text-slate-500">ISP</div>
+            <div id="inspectorISP" class="text-slate-200 font-medium truncate">...</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-500">ASN</div>
+            <div id="inspectorASN" class="text-slate-200 font-medium truncate">...</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-500">Organization</div>
+            <div id="inspectorOrg" class="text-slate-200 font-medium truncate">...</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-500">Coordinates</div>
+            <div id="inspectorCoords" class="text-slate-200 font-medium">...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROCESS & SOCKET CONTEXT -->
+      <div class="cyber-card rounded-lg p-4 space-y-2 border-slate-800">
+        <div class="font-bold text-slate-300 text-[11px] uppercase tracking-wider mb-2 flex items-center">
+          <i data-lucide="cpu" class="w-3.5 h-3.5 text-emerald-400 mr-1.5"></i> Socket & Process Context
+        </div>
+
+        <div class="space-y-1.5 text-slate-400">
+          <div class="flex justify-between">
+            <span class="text-slate-500">Process Name:</span>
+            <span id="inspectorProcessName" class="text-slate-200 font-bold">Unknown</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Process ID (PID):</span>
+            <span id="inspectorPID" class="text-cyan-400">N/A</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Protocol / State:</span>
+            <span class="text-slate-200"><span id="inspectorProtocol">TCP</span> / <span id="inspectorState" class="text-cyan-400">ESTABLISHED</span></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Local Endpoint:</span>
+            <span id="inspectorLocalEndpoint" class="text-slate-300">0.0.0.0:0</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Remote Endpoint:</span>
+            <span id="inspectorRemoteEndpoint" class="text-slate-300">0.0.0.0:0</span>
+          </div>
+          <div>
+            <span class="text-slate-500 block text-[10px]">Binary Executable Path:</span>
+            <div id="inspectorProcessPath" class="text-[10px] text-slate-300 break-all bg-slate-900/80 p-1.5 rounded border border-slate-800 mt-1">N/A</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- THREAT INTEL EXTERNAL LOOKUPS -->
+      <div class="cyber-card rounded-lg p-4 space-y-2 border-slate-800">
+        <div class="font-bold text-slate-300 text-[11px] uppercase tracking-wider mb-2 flex items-center">
+          <i data-lucide="external-link" class="w-3.5 h-3.5 text-cyan-400 mr-1.5"></i> Threat Intelligence Dossiers
+        </div>
+
+        <div class="grid grid-cols-3 gap-2">
+          <a id="linkVirusTotal" target="_blank" rel="noopener noreferrer" class="p-2 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-center text-slate-300 hover:text-cyan-300 transition block">
+            <div class="font-bold text-[11px]">VirusTotal</div>
+            <div class="text-[9px] text-slate-500">Reputation</div>
+          </a>
+          <a id="linkAbuseIPDB" target="_blank" rel="noopener noreferrer" class="p-2 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-center text-slate-300 hover:text-cyan-300 transition block">
+            <div class="font-bold text-[11px]">AbuseIPDB</div>
+            <div class="text-[9px] text-slate-500">Reports</div>
+          </a>
+          <a id="linkShodan" target="_blank" rel="noopener noreferrer" class="p-2 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-center text-slate-300 hover:text-cyan-300 transition block">
+            <div class="font-bold text-[11px]">Shodan</div>
+            <div class="text-[9px] text-slate-500">Open Ports</div>
+          </a>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- FIREWALL RULES MANAGER MODAL -->
+  <div id="firewallRulesModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="cyber-card rounded-xl max-w-3xl w-full border border-cyan-500/30 overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+      <!-- Modal Header -->
+      <div class="px-5 py-3.5 bg-cyber-800 border-b border-cyan-500/20 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="shield-alert" class="w-4 h-4 text-rose-400"></i>
+          <span class="font-bold text-white font-mono text-sm tracking-wide">NATIVE OS FIREWALL RULES (BLOCKED IPS)</span>
+        </div>
+        <button id="closeRulesModalBtn" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-4 overflow-y-auto flex-1">
+        <table class="w-full text-left text-xs font-mono">
+          <thead class="border-b border-slate-700 text-slate-400 uppercase text-[10px]">
+            <tr>
+              <th class="py-2 px-3">Target IP</th>
+              <th class="py-2 px-3">Timestamp</th>
+              <th class="py-2 px-3">Audit Reason</th>
+              <th class="py-2 px-3">Status</th>
+              <th class="py-2 px-3 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="firewallRulesTableBody" class="divide-y divide-slate-800/60">
+            <tr>
+              <td colspan="5" class="text-center py-6 text-slate-500">Loading firewall rules...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-5 py-2.5 bg-cyber-900 border-t border-slate-800 text-[11px] font-mono text-slate-400 flex justify-between items-center">
+        <span>Windows: <code class="text-cyan-400">netsh advfirewall</code> | Linux: <code class="text-cyan-400">iptables</code></span>
+        <button onclick="document.getElementById('firewallRulesModal').classList.add('hidden')" class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EVENT DETAIL INSPECTION MODAL -->
+  <div id="eventDetailModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="cyber-card rounded-xl max-w-2xl w-full border border-cyan-500/30 overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+      <div class="px-5 py-3.5 bg-cyber-800 border-b border-cyan-500/20 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="terminal" class="w-4 h-4 text-cyan-400"></i>
+          <span id="eventDetailModalTitle" class="font-bold text-white font-mono text-sm tracking-wide">EVENT DOSSIER</span>
+        </div>
+        <button id="closeEventDetailBtn" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="p-4 space-y-3 overflow-y-auto flex-1 font-mono text-xs">
+        <div class="flex justify-between border-b border-slate-800 pb-2">
+          <span class="text-slate-500">Timestamp:</span>
+          <span id="eventDetailTimestamp" class="text-slate-200 font-bold">N/A</span>
+        </div>
+        <div class="flex justify-between border-b border-slate-800 pb-2">
+          <span class="text-slate-500">Source / Subsystem:</span>
+          <span id="eventDetailSource" class="text-cyan-400 font-bold">N/A</span>
+        </div>
+        <div>
+          <span class="text-slate-500 block mb-1">Raw Event Payload:</span>
+          <pre id="eventDetailRaw" class="bg-slate-950 p-3 rounded border border-slate-800 text-[11px] text-cyan-300 font-mono overflow-x-auto max-h-[320px] select-all"></pre>
+        </div>
+      </div>
+      <div class="px-5 py-2.5 bg-cyber-900 border-t border-slate-800 text-xs font-mono flex justify-between items-center">
+        <button id="copyEventDetailBtn" class="px-3 py-1.5 rounded bg-slate-800 hover:bg-cyan-500/20 text-slate-200 hover:text-cyan-300 border border-slate-700 transition flex items-center">
+          <i data-lucide="copy" class="w-3.5 h-3.5 mr-1.5"></i> Copy JSON Payload
+        </button>
+        <button onclick="document.getElementById('eventDetailModal').classList.add('hidden')" class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIMULATE AUTHENTICATION ATTEMPT MODAL -->
+  <div id="simulateLoginModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="cyber-card rounded-xl max-w-md w-full border border-cyan-500/30 overflow-hidden shadow-2xl flex flex-col">
+      <div class="px-5 py-3.5 bg-cyber-800 border-b border-cyan-500/20 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="key" class="w-4 h-4 text-emerald-400"></i>
+          <span class="font-bold text-white font-mono text-sm tracking-wide">SIMULATE AUTHENTICATION EVENT</span>
+        </div>
+        <button onclick="document.getElementById('simulateLoginModal').classList.add('hidden')" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <form id="simulateLoginForm" class="p-5 space-y-3 font-mono text-xs">
+        <div>
+          <label class="block text-slate-400 mb-1">Target Username:</label>
+          <input id="simUser" type="text" value="admin" required class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Authentication Result:</label>
+          <select id="simStatus" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
+            <option value="FAILED">FAILED (Invalid Credentials / Bad Password)</option>
+            <option value="SUCCESS">SUCCESS (Logon Succeeded)</option>
+            <option value="LOGOFF">LOGOFF (Session Logoff)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Logon Category / Type:</label>
+          <select id="simType" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
+            <option value="Remote Desktop (RDP)">Remote Desktop (RDP - Port 3389)</option>
+            <option value="Interactive Console">Interactive Console</option>
+            <option value="Network Auth">Network Authentication (SMB/SSH)</option>
+            <option value="Web Portal">Web SOC Portal</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Source IP Address:</label>
+          <input id="simIP" type="text" value="185.220.101.5" required class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Audit Failure Reason:</label>
+          <input id="simReason" type="text" value="Bad Password / Invalid Credentials" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
+        </div>
+        <div class="pt-2 flex justify-end space-x-2">
+          <button type="button" onclick="document.getElementById('simulateLoginModal').classList.add('hidden')" class="px-3 py-1.5 rounded bg-slate-800 text-slate-300">
+            Cancel
+          </button>
+          <button type="submit" class="px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition">
+            Inject Auth Event
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- INJECT SECURITY THREAT INCIDENT MODAL -->
+  <div id="injectSecurityModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="cyber-card rounded-xl max-w-md w-full border border-rose-500/40 overflow-hidden shadow-2xl flex flex-col">
+      <div class="px-5 py-3.5 bg-cyber-800 border-b border-rose-500/20 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="shield-alert" class="w-4 h-4 text-rose-400"></i>
+          <span class="font-bold text-white font-mono text-sm tracking-wide">INJECT SECURITY INCIDENT</span>
+        </div>
+        <button onclick="document.getElementById('injectSecurityModal').classList.add('hidden')" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <form id="injectSecurityForm" class="p-5 space-y-3 font-mono text-xs">
+        <div>
+          <label class="block text-slate-400 mb-1">Incident Category:</label>
+          <select id="injCategory" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
+            <option value="AUTHENTICATION">AUTHENTICATION (Brute Force / Password Spray)</option>
+            <option value="FIREWALL">FIREWALL (Suspicious Inbound Port Scan)</option>
+            <option value="PROCESS">PROCESS (Suspicious Execution / LOLBin)</option>
+            <option value="PRIVILEGE">PRIVILEGE (Privilege Escalation Attempt)</option>
+            <option value="AUDIT">AUDIT (Security Policy Tampering)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Threat Severity:</label>
+          <select id="injSeverity" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
+            <option value="CRITICAL">CRITICAL (Immediate containment required)</option>
+            <option value="HIGH">HIGH (Severe threat vector)</option>
+            <option value="MEDIUM">MEDIUM (Suspicious anomaly)</option>
+            <option value="INFO">INFO (Informational telemetry)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Incident Title:</label>
+          <input id="injTitle" type="text" value="Suspicious Port Sweep on RDP / SSH" required class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Incident Description:</label>
+          <textarea id="injDescription" rows="2" required class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">SYN packet threshold exceeded across ports 22, 3389, 445 from remote IP.</textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-slate-400 mb-1">Source IP:</label>
+            <input id="injIP" type="text" value="45.33.32.156" required class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Target Account:</label>
+            <input id="injUser" type="text" value="root" required class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
+          </div>
+        </div>
+        <div class="pt-2 flex justify-end space-x-2">
+          <button type="button" onclick="document.getElementById('injectSecurityModal').classList.add('hidden')" class="px-3 py-1.5 rounded bg-slate-800 text-slate-300">
+            Cancel
+          </button>
+          <button type="submit" class="px-4 py-1.5 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold transition">
+            Register Threat Incident
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- SECURITY INCIDENT REPORTS & SIEM EXPORT MODAL -->
+  <!-- ================================================================= -->
+  <div id="reportsExportModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="cyber-card rounded-xl max-w-2xl w-full border border-cyan-500/40 overflow-hidden shadow-2xl flex flex-col">
+      <div class="px-5 py-3.5 bg-cyber-800 border-b border-cyan-500/20 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="file-text" class="w-4 h-4 text-cyan-400"></i>
+          <span class="font-bold text-white font-mono text-sm tracking-wide">SECURITY AUDIT REPORTS & SIEM EXPORT</span>
+        </div>
+        <button id="closeReportsModalBtn" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-5 text-xs font-mono max-h-[80vh] overflow-y-auto">
+        <!-- Executive Briefing Section -->
+        <div class="p-4 rounded-lg bg-cyber-900 border border-cyan-500/30 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-white font-bold flex items-center text-sm">
+              <i data-lucide="printer" class="w-4 h-4 text-cyan-400 mr-2"></i> Executive Cyber Incident Briefing
+            </span>
+            <span class="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 text-[10px] border border-cyan-800">Print / PDF Ready</span>
+          </div>
+          <p class="text-slate-400 text-[11px] leading-relaxed">
+            Generates a high-fidelity standalone executive cybersecurity brief with host telemetry, critical incidents, brute-force risk evaluation, and top attacking geographies. Ready for management briefing or export to PDF via browser print.
+          </p>
+          <div class="flex items-center space-x-2 pt-1">
+            <a href="/api/reports/executive-html" target="_blank" class="px-4 py-2 rounded bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold transition flex items-center shadow-lg shadow-cyan-500/20">
+              <i data-lucide="external-link" class="w-3.5 h-3.5 mr-1.5"></i> Open & Print Executive Briefing
+            </a>
+            <a href="/api/reports/summary" target="_blank" class="px-3 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center">
+              <i data-lucide="code" class="w-3.5 h-3.5 mr-1.5"></i> View Raw JSON Summary
+            </a>
+          </div>
+        </div>
+
+        <!-- CSV Export Center -->
+        <div class="p-4 rounded-lg bg-cyber-900 border border-slate-700/80 space-y-3">
+          <span class="text-white font-bold flex items-center text-sm">
+            <i data-lucide="table" class="w-4 h-4 text-emerald-400 mr-2"></i> CSV Spreadsheets & Analytics Export (RFC 4180)
+          </span>
+          <p class="text-slate-400 text-[11px]">Download raw telemetry in CSV format for Excel, PowerBI, or internal analysis:</p>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+            <a href="/api/reports/download?format=csv&type=incidents" download class="p-2.5 rounded bg-slate-800/90 hover:bg-rose-500/10 border border-slate-700 hover:border-rose-500/40 text-center transition group">
+              <i data-lucide="shield-alert" class="w-4 h-4 mx-auto mb-1 text-rose-400"></i>
+              <div class="text-[11px] font-bold text-slate-200 group-hover:text-rose-300">Incidents</div>
+              <div class="text-[9px] text-slate-500">Threat Audit CSV</div>
+            </a>
+            <a href="/api/reports/download?format=csv&type=logins" download class="p-2.5 rounded bg-slate-800/90 hover:bg-emerald-500/10 border border-slate-700 hover:border-emerald-500/40 text-center transition group">
+              <i data-lucide="key" class="w-4 h-4 mx-auto mb-1 text-emerald-400"></i>
+              <div class="text-[11px] font-bold text-slate-200 group-hover:text-emerald-300">Logins</div>
+              <div class="text-[9px] text-slate-500">Auth History CSV</div>
+            </a>
+            <a href="/api/reports/download?format=csv&type=connections" download class="p-2.5 rounded bg-slate-800/90 hover:bg-sky-500/10 border border-slate-700 hover:border-sky-500/40 text-center transition group">
+              <i data-lucide="globe" class="w-4 h-4 mx-auto mb-1 text-sky-400"></i>
+              <div class="text-[11px] font-bold text-slate-200 group-hover:text-sky-300">Sockets</div>
+              <div class="text-[9px] text-slate-500">Live Traffic CSV</div>
+            </a>
+            <a href="/api/reports/download?format=csv&type=firewall" download class="p-2.5 rounded bg-slate-800/90 hover:bg-purple-500/10 border border-slate-700 hover:border-purple-500/40 text-center transition group">
+              <i data-lucide="shield" class="w-4 h-4 mx-auto mb-1 text-purple-400"></i>
+              <div class="text-[11px] font-bold text-slate-200 group-hover:text-purple-300">Blocklist</div>
+              <div class="text-[9px] text-slate-500">Firewall Rules CSV</div>
+            </a>
+          </div>
+        </div>
+
+        <!-- SIEM & Syslog Compliance Section -->
+        <div class="p-4 rounded-lg bg-cyber-900 border border-purple-500/30 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-white font-bold flex items-center text-sm">
+              <i data-lucide="server" class="w-4 h-4 text-purple-400 mr-2"></i> SIEM & ArcSight CEF Integration
+            </span>
+            <span class="px-2 py-0.5 rounded bg-purple-950 text-purple-300 text-[10px] border border-purple-800">Splunk / Elastic / Sentinel</span>
+          </div>
+          <p class="text-slate-400 text-[11px]">
+            Export security audit logs encoded in standard ArcSight Common Event Format (CEF) and RFC 5424 Syslog for automated ingestion into corporate SIEM platforms.
+          </p>
+          <div class="pt-1">
+            <a href="/api/reports/download?format=cef" download class="px-3.5 py-2 rounded bg-purple-600 hover:bg-purple-500 text-white font-bold transition inline-flex items-center shadow-lg shadow-purple-600/20">
+              <i data-lucide="download" class="w-3.5 h-3.5 mr-1.5"></i> Download ArcSight CEF Stream (.cef)
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- THREAT INTELLIGENCE & REPUTATION QUERY MODAL -->
+  <!-- ================================================================= -->
+  <div id="threatIntelModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="cyber-card rounded-xl max-w-lg w-full border border-purple-500/40 overflow-hidden shadow-2xl flex flex-col">
+      <div class="px-5 py-3.5 bg-cyber-800 border-b border-purple-500/20 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="shield-alert" class="w-4 h-4 text-purple-400"></i>
+          <span class="font-bold text-white font-mono text-sm tracking-wide">AEGISNET THREAT INTELLIGENCE RADAR</span>
+        </div>
+        <button id="closeIntelModalBtn" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-4 text-xs font-mono">
+        <!-- IP Lookup Bar -->
+        <div>
+          <label class="block text-slate-400 mb-1.5 font-bold">Query Host IP Threat Reputation:</label>
+          <div class="flex space-x-2">
+            <input id="intelQueryIPInput" type="text" placeholder="e.g. 185.220.101.5 or 45.33.32.156" 
+                   class="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-purple-400 font-mono">
+            <button id="intelQueryBtn" class="px-4 py-1.5 rounded bg-purple-600 hover:bg-purple-500 text-white font-bold transition flex items-center">
+              <i data-lucide="search" class="w-3.5 h-3.5 mr-1"></i> Check
+            </button>
+          </div>
+        </div>
+
+        <!-- Sample IP Shortcuts -->
+        <div class="flex items-center flex-wrap gap-1.5 text-[11px]">
+          <span class="text-slate-500">Test Samples:</span>
+          <button onclick="document.getElementById('intelQueryIPInput').value='185.220.101.5'; document.getElementById('intelQueryBtn').click();" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 hover:text-purple-300">Tor Exit Node</button>
+          <button onclick="document.getElementById('intelQueryIPInput').value='45.154.255.88'; document.getElementById('intelQueryBtn').click();" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 hover:text-purple-300">Mirai C2</button>
+          <button onclick="document.getElementById('intelQueryIPInput').value='198.20.99.130'; document.getElementById('intelQueryBtn').click();" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 hover:text-purple-300">Shodan Scanner</button>
+          <button onclick="document.getElementById('intelQueryIPInput').value='8.8.8.8'; document.getElementById('intelQueryBtn').click();" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 hover:text-purple-300">Google DNS</button>
+        </div>
+
+        <!-- Threat Result Box -->
+        <div id="intelResultBox" class="p-4 rounded-lg bg-slate-950 border border-slate-800 space-y-3">
+          <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+            <span class="text-slate-400">Verdict:</span>
+            <span id="intelVerdict" class="font-bold text-slate-300 text-sm">Awaiting Query...</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400">Threat Risk Score:</span>
+            <span id="intelScore" class="font-bold text-white text-base">0 / 100</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400">Classification:</span>
+            <span id="intelCategory" class="text-slate-300">N/A</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400">Confidence Level:</span>
+            <span id="intelConfidence" class="text-slate-300">N/A</span>
+          </div>
+          <div>
+            <span class="text-slate-400 block mb-1">Threat Indicators & Signatures:</span>
+            <div id="intelIndicators" class="text-[11px] text-slate-300 bg-slate-900 p-2 rounded border border-slate-800">
+              No queries performed yet.
+            </div>
+          </div>
+        </div>
+
+        <!-- Threat Database Telemetry -->
+        <div class="p-3 rounded-lg bg-cyber-900 border border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+          <span>Active Tor Relays: <strong id="intelTorCount" class="text-cyan-400">Loading...</strong></span>
+          <span>Threat Cache: <strong id="intelCacheCount" class="text-purple-400">Loading...</strong></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- MINIMALIST CYBER INTRO BOOT ANIMATION SPLASH -->
+  <!-- ================================================================= -->
+  <div id="aegisIntroSplash">
+    <div class="cyber-scan-bar"></div>
+    <div class="relative flex flex-col items-center max-w-lg px-6 py-8 text-center">
+      <!-- Cyber Shield Logo -->
+      <div class="intro-logo-glow mb-5 relative flex items-center justify-center w-20 h-20 rounded-2xl bg-cyan-950/60 border border-cyan-400/50 shadow-[0_0_35px_rgba(0,243,255,0.3)]">
+        <img src="/static/img/icon.svg" alt="AegisNet Logo" class="w-12 h-12">
+      </div>
+
+      <!-- App Title -->
+      <h1 class="text-2xl md:text-3xl font-extrabold tracking-widest text-white font-mono mb-1">
+        AEGIS<span class="text-cyan-400">NET</span> <span class="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700/60 font-mono align-middle">SOC v1.5</span>
+      </h1>
+      <p class="text-xs text-slate-400 font-mono tracking-wider uppercase mb-5">
+        Autonomous Real-Time SOC & Live Threat Interceptor
+      </p>
+
+      <!-- Boot Sequence Console -->
+      <div class="w-full bg-black/75 border border-cyan-500/25 rounded-lg p-3.5 mb-5 font-mono text-[11px] text-left text-slate-300 space-y-1 shadow-inner h-28 overflow-hidden flex flex-col justify-end">
+        <div id="bootStep1" class="text-slate-400 flex items-center"><span class="text-cyan-400 mr-2">[*]</span> Initializing AegisNet Kernel v1.5...</div>
+        <div id="bootStep2" class="text-slate-400 flex items-center opacity-0 transition-opacity duration-300"><span class="text-emerald-400 mr-2">[OK]</span> GeoIP MaxMind & Tor Exit Relays Loaded.</div>
+        <div id="bootStep3" class="text-slate-400 flex items-center opacity-0 transition-opacity duration-300"><span class="text-cyan-400 mr-2">[OK]</span> Socket Interceptor & Firewall Driver Ready.</div>
+        <div id="bootStep4" class="text-amber-300 flex items-center opacity-0 transition-opacity duration-300"><span class="text-amber-400 mr-2">[AUTHOR]</span> Mehdi Mirzaei (@mehdisec) | Mehdisec@gmail.com</div>
+      </div>
+
+      <!-- Progress Bar -->
+      <div class="w-full bg-slate-900/90 h-1.5 rounded-full overflow-hidden border border-slate-700/60 mb-4">
+        <div id="introProgressFill" class="intro-progress-fill h-full bg-gradient-to-r from-cyan-500 via-emerald-400 to-cyan-300" style="width: 0%;"></div>
+      </div>
+
+      <!-- Creator Credits and Skip -->
+      <div class="flex items-center justify-between w-full text-[11px] text-slate-400 font-mono">
+        <span>Architect: <a href="https://github.com/mehdisec" target="_blank" class="text-cyan-400 hover:underline">Mehdi Mirzaei</a></span>
+        <button id="skipIntroBtn" class="text-slate-300 hover:text-white transition px-2.5 py-1 rounded bg-slate-800/80 hover:bg-slate-700 border border-slate-700">Enter Console &rarr;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- MINIMALIST CYBER SHUTDOWN EXIT OVERLAY -->
+  <!-- ================================================================= -->
+  <div id="aegisExitOverlay">
+    <div class="flex flex-col items-center max-w-md px-6 py-8 text-center font-mono">
+      <div class="w-16 h-16 rounded-full bg-rose-950/40 border border-rose-500/40 flex items-center justify-center text-rose-400 mb-4 animate-pulse">
+        <i data-lucide="power" class="w-8 h-8"></i>
+      </div>
+      <h2 class="text-xl font-bold text-white mb-2">AEGISNET TERMINATION SEQUENCE</h2>
+      <p class="text-xs text-rose-300/80 mb-4">Releasing Network Sockets & Disengaging SOC Telemetry...</p>
+      <div class="text-[11px] text-slate-400 mb-2">Session saved. Goodbye, Operator.</div>
+      <div class="text-[10px] text-slate-600 font-mono mt-2">Mehdi Mirzaei &copy; 2026 AegisNet Security</div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- CREATOR & SYSTEM INFO MODAL -->
+  <!-- ================================================================= -->
+  <div id="creatorAboutModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="cyber-card rounded-xl max-w-md w-full border border-cyan-500/40 overflow-hidden shadow-2xl flex flex-col">
+      <div class="px-5 py-3.5 bg-cyber-800 border-b border-cyan-500/20 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="award" class="w-4 h-4 text-cyan-400"></i>
+          <span class="font-bold text-white font-mono text-sm tracking-wide">ABOUT AEGISNET SOC & AUTHOR</span>
+        </div>
+        <button id="closeAboutModalBtn" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-4 font-mono text-xs text-slate-300">
+        <div class="flex items-center space-x-4 bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+          <div class="w-12 h-12 rounded-xl bg-cyan-950 border border-cyan-400/40 flex items-center justify-center flex-shrink-0">
+            <img src="/static/img/icon.svg" class="w-8 h-8" alt="Logo">
+          </div>
+          <div>
+            <div class="font-bold text-white text-sm">AEGISNET SOC PLATFORM</div>
+            <div class="text-[11px] text-cyan-400">Version 1.5.0 LTS (Desktop & Web)</div>
+            <div class="text-[10px] text-slate-500">Autonomous Cyber Defense & Socket Interceptor</div>
+          </div>
+        </div>
+
+        <div class="bg-cyber-900 p-3.5 rounded-lg border border-slate-800 space-y-2.5">
+          <div class="text-slate-400 font-bold border-b border-slate-800 pb-1 text-[11px]">PROJECT AUTHOR & LEAD ARCHITECT:</div>
+          <div class="flex items-center justify-between text-slate-200">
+            <span class="text-slate-400">Author:</span>
+            <span class="font-bold text-white">Mehdi Mirzaei</span>
+          </div>
+          <div class="flex items-center justify-between text-slate-200">
+            <span class="text-slate-400">Email:</span>
+            <a href="mailto:Mehdisec@gmail.com" class="text-cyan-400 hover:underline">Mehdisec@gmail.com</a>
+          </div>
+          <div class="flex items-center justify-between text-slate-200">
+            <span class="text-slate-400">GitHub:</span>
+            <a href="https://github.com/mehdisec" target="_blank" class="text-cyan-400 hover:underline">github.com/mehdisec</a>
+          </div>
+          <div class="flex items-center justify-between text-slate-200">
+            <span class="text-slate-400">Portfolio:</span>
+            <a href="https://github.io/mehdisec" target="_blank" class="text-cyan-400 hover:underline">github.io/mehdisec</a>
+          </div>
+          <div class="flex items-center justify-between text-slate-200">
+            <span class="text-slate-400">License:</span>
+            <span class="text-emerald-400">MIT Open Source License</span>
+          </div>
+        </div>
+
+        <div class="text-[11px] text-slate-400 leading-relaxed">
+          Engineered as a zero-bloat, enterprise-grade Cyber Defense SOC monitor with native OS desktop integration, real-time GeoIP mapping, Tor relay tracking, and automated firewall isolation.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <!-- APP SCRIPTS -->
+  <script src="/static/js/world-data.js?v=2.4"></script>
+  <script src="/static/js/map.js?v=2.4"></script>
+  <script src="/static/js/inspector.js?v=2.4"></script>
+  <script src="/static/js/logs.js?v=2.4"></script>
+  <script src="/static/js/app.js?v=2.4"></script>
+</body>
+</html>
