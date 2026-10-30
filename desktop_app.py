@@ -72,19 +72,19 @@ class DesktopApi:
         self._window = window_ref
 
     def exit_app(self):
-        """Cleanly trigger app shutdown from within JavaScript."""
-        logger.info("[DesktopApi] Received exit request from UI. Closing application...")
-        threading.Thread(target=self._delayed_close).start()
-        return {"status": "closing"}
+        """Cleanly trigger app shutdown from within JavaScript without blocking."""
+        logger.info("[DesktopApi] Exit requested from UI. Closing application...")
+        def _terminate():
+            time.sleep(0.05)
+            if self._window:
+                try:
+                    self._window.destroy()
+                except Exception:
+                    pass
+            os._exit(0)
 
-    def _delayed_close(self):
-        time.sleep(0.3)
-        if self._window:
-            try:
-                self._window.destroy()
-            except Exception:
-                pass
-        os._exit(0)
+        threading.Thread(target=_terminate, daemon=True).start()
+        return {"status": "closing"}
 
     def get_author(self):
         return {
@@ -157,15 +157,10 @@ def main():
         )
         api_instance.set_window(window)
 
-        # Handler on closing window
+        # Clean, non-blocking window closing handler
         def on_closing():
-            logger.info("AegisNet desktop window closing. Releasing system resources...")
-            try:
-                # Trigger frontend shutdown animation if possible
-                window.evaluate_js("if (window.triggerAppShutdown) window.triggerAppShutdown();")
-                time.sleep(0.4)
-            except Exception:
-                pass
+            logger.info("AegisNet desktop window closing. Exiting immediately...")
+            threading.Thread(target=lambda: (time.sleep(0.05), os._exit(0)), daemon=True).start()
             return True
 
         window.events.closing += on_closing

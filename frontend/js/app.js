@@ -318,21 +318,22 @@ class AegisApp {
     const dismissSplash = () => {
       if (dismissed) return;
       dismissed = true;
+      splash.style.pointerEvents = 'none';
       splash.classList.add('hidden-splash');
       setTimeout(() => {
         try { splash.remove(); } catch(e) {}
-      }, 750);
+      }, 400);
     };
 
     if (skipBtn) {
       skipBtn.addEventListener('click', dismissSplash);
     }
 
-    setTimeout(() => { if (fill) fill.style.width = '35%'; if (s2) s2.classList.remove('opacity-0'); }, 250);
-    setTimeout(() => { if (fill) fill.style.width = '70%'; if (s3) s3.classList.remove('opacity-0'); }, 600);
-    setTimeout(() => { if (fill) fill.style.width = '90%'; if (s4) s4.classList.remove('opacity-0'); }, 950);
-    setTimeout(() => { if (fill) fill.style.width = '100%'; }, 1250);
-    setTimeout(dismissSplash, 1600);
+    setTimeout(() => { if (fill) fill.style.width = '40%'; if (s2) s2.classList.remove('opacity-0'); }, 120);
+    setTimeout(() => { if (fill) fill.style.width = '75%'; if (s3) s3.classList.remove('opacity-0'); }, 300);
+    setTimeout(() => { if (fill) fill.style.width = '95%'; if (s4) s4.classList.remove('opacity-0'); }, 550);
+    setTimeout(() => { if (fill) fill.style.width = '100%'; }, 750);
+    setTimeout(dismissSplash, 950);
   }
 
   initAboutModal() {
@@ -394,7 +395,7 @@ class AegisApp {
           } else {
             window.close();
           }
-        }, 900);
+        }, 350);
       });
     }
   }
