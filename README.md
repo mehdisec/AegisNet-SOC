@@ -7,12 +7,13 @@
 ### **Autonomous SOC Defense, Live Socket Interceptor & Native Desktop Suite**
 
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-00f3ff.svg?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/mehdisec)
+[![Download Installer](https://img.shields.io/badge/Download-Windows%20Setup%20EXE-22c55e.svg?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/mehdisec/AegisNet-SOC/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-00ff88.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![GUI](https://img.shields.io/badge/Desktop-pywebview%20%2F%20WebView2-ff0055.svg?style=for-the-badge)](https://pywebview.flowrl.com/)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg?style=for-the-badge)](LICENSE)
 [![Author](https://img.shields.io/badge/Architect-Mehdi%20Mirzaei-ffaa00.svg?style=for-the-badge&logo=github)](https://github.com/mehdisec)
 
-[English Documentation](README.md) • [راهنمای فارسی](README_FA.md) • [Quick Start](#-quick-start) • [Desktop App](#-native-desktop-suite) • [Author](#-author--attribution)
+[English Documentation](README.md) • [راهنمای فارسی](README_FA.md) • [⚡ Download Setup EXE](https://github.com/mehdisec/AegisNet-SOC/releases/latest) • [Quick Start](#-quick-start) • [Desktop App](#-native-desktop-suite) • [Author](#-author--attribution)
 
 </div>
 

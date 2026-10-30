@@ -7,12 +7,13 @@
 ### **سامانه پایش بلادرنگ سوکت‌ها، رادار هوش تهدیدات و نرم‌افزار دسکتاپ بومی**
 
 [![سیستم‌عامل](https://img.shields.io/badge/سیستم‌عامل-ویندوز%20%7C%20لینوکس-00f3ff.svg?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/mehdisec)
+[![دانلود فایل نصبی ویندوز](https://img.shields.io/badge/دانلود-فایل%20نصبی%20EXE%20ویندوز-22c55e.svg?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/mehdisec/AegisNet-SOC/releases/latest)
 [![پایتون](https://img.shields.io/badge/پایتون-3.10%2B-00ff88.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![دسکتاپ](https://img.shields.io/badge/دسکتاپ-pywebview%20%2F%20WebView2-ff0055.svg?style=for-the-badge)](https://pywebview.flowrl.com/)
 [![مجوز](https://img.shields.io/badge/مجوز-MIT-purple.svg?style=for-the-badge)](LICENSE)
 [![توسعه‌دهنده](https://img.shields.io/badge/صاحب%20اثر-مهدی%20میرزایی-ffaa00.svg?style=for-the-badge&logo=github)](https://github.com/mehdisec)
 
-[راهنمای انگلیسی (English)](README.md) • [نصب سریع](#-نصب-سریع-با-پکیج‌های-نصب-خودکار) • [نسخه دسکتاپ](#-نسخه-دسکتاپ-بومی-windows--linux) • [مشخصات صاحب اثر](#-مشخصات-صاحب-اثر-و-تماس)
+[راهنمای انگلیسی (English)](README.md) • [⚡ دانلود مستقیم نصاب ویندوز (EXE)](https://github.com/mehdisec/AegisNet-SOC/releases/latest) • [نصب سریع](#-نصب-سریع-با-پکیج‌های-نصب-خودکار) • [نسخه دسکتاپ](#-نسخه-دسکتاپ-بومی-windows--linux) • [مشخصات صاحب اثر](#-مشخصات-صاحب-اثر-و-تماس)
 
 </div>
 
