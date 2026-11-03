@@ -7,6 +7,7 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+!geo-arcs-map/dist/
 downloads/
 eggs/
 .eggs/
@@ -14,6 +15,7 @@ lib/
 lib64/
 parts/
 sdist/
+!geo-arcs-map/dist/
 var/
 wheels/
 share/python-wheels/

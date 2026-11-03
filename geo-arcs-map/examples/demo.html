@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GeoArcsMap - Interactive World Map, Links & Points Demo</title>
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- GeoArcsMap CSS -->
+  <link rel="stylesheet" href="../dist/geo-arcs-map.css">
+
+  <!-- Bundled Offline World Vector GeoJSON -->
+  <script src="../src/data/world-data.js"></script>
+
+  <!-- GeoArcsMap Engine -->
+  <script src="../dist/geo-arcs-map.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #07090e;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Top Control Bar */
+    header {
+      background: rgba(13, 17, 27, 0.95);
+      border-bottom: 1px solid rgba(0, 243, 255, 0.25);
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      z-index: 500;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: bold;
+      color: #ffffff;
+      letter-spacing: 1px;
+    }
+    .brand span {
+      color: #00f3ff;
+    }
+    .badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #082f49;
+      color: #38bdf8;
+      border: 1px solid #0284c7;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(0, 243, 255, 0.35);
+      color: #38bdf8;
+      padding: 5px 12px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .btn:hover {
+      background: rgba(0, 243, 255, 0.2);
+      color: #ffffff;
+      border-color: #00f3ff;
+      box-shadow: 0 0 10px rgba(0, 243, 255, 0.3);
+    }
+    .btn.active {
+      background: #00f3ff;
+      color: #07090e;
+      font-weight: bold;
+    }
+
+    /* Map Viewport Container */
+    #mapViewport {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    /* Floating Inspector Panel */
+    #inspectorPanel {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 320px;
+      background: rgba(10, 15, 26, 0.95);
+      border: 1px solid rgba(0, 243, 255, 0.4);
+      border-radius: 8px;
+      padding: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), 0 0 15px rgba(0, 243, 255, 0.2);
+      z-index: 1000;
+      font-family: monospace;
+      font-size: 12px;
+      backdrop-filter: blur(8px);
+      transition: all 0.3s ease;
+    }
+    #inspectorPanel h4 {
+      color: #00f3ff;
+      font-size: 13px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+      padding-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      font-size: 11px;
+    }
+    .meta-key {
+      color: #64748b;
+    }
+    .meta-val {
+      color: #f1f5f9;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation & Interactive Bar -->
+  <header>
+    <div class="brand">
+      🌐 GeoArcs<span>Map</span>
+      <span class="badge">v1.0.0 REUSABLE PACKAGE</span>
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="btnRandom">🎲 Generate Links & Points</button>
+      <button class="btn" id="btnToggleBasemap">🗺️ Toggle Basemap (Vector/OSM)</button>
+      <button class="btn" id="btnFlySF">📍 SF</button>
+      <button class="btn" id="btnFlyLondon">📍 London</button>
+      <button class="btn" id="btnFlyTokyo">📍 Tokyo</button>
+      <button class="btn" id="btnResetView">🌍 Reset</button>
+      <button class="btn" id="btnClear">🧹 Clear</button>
+    </div>
+  </header>
+
+  <!-- Interactive Map Viewport -->
+  <div id="mapViewport"></div>
+
+  <!-- Real-Time Inspection HUD -->
+  <div id="inspectorPanel">
+    <h4>
+      <span>🔍 TELEMETRY INSPECTOR</span>
+      <span id="activeCount" style="color: #00ff88; font-size: 11px;">0 Links</span>
+    </h4>
+    <div id="inspectorContent">
+      <p style="color: #94a3b8; font-size: 11px; line-height: 1.5;">
+        Click any remote node point or curved link arc to inspect real-time packet telemetry.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    // Initialize GeoArcsMap with Host station at San Francisco
+    const map = new GeoArcsMap('mapViewport', {
+      center: [28, 0],
+      zoom: 2.3,
+      basemapMode: 'vector', // 100% Offline vector basemap using window.WORLD_GEOJSON
+      hostLocation: {
+        lat: 37.7749,
+        lon: -122.4194,
+        city: 'San Francisco',
+        country: 'US',
+        label: 'Primary Command Station'
+      },
+      onNodeClick: (node) => {
+        showDetails('NODE SELECTED', {
+          'Label / ID': node.label || node.id,
+          'Latitude': node.lat.toFixed(4),
+          'Longitude': node.lon.toFixed(4),
+          'Color': node.color,
+          'Type': 'Anchor Point'
+        });
+      },
+      onLinkClick: (arc) => {
+        showDetails('LINK ARC SELECTED', {
+          'Link ID': arc.id,
+          'Flow Color': arc.color,
+          'Source Coords': `${arc.sLat.toFixed(2)}, ${arc.sLon.toFixed(2)}`,
+          'Target Coords': `${arc.dLat.toFixed(2)}, ${arc.dLon.toFixed(2)}`,
+          'Packet Speed': arc.speed.toFixed(5),
+          'Flow Animation': 'Active Quadratic Bezier'
+        });
+      }
+    });
+
+    // Sample targets around the world
+    const TARGET_CITIES = [
+      { id: 'london', label: '185.199.108.153 (London)', lat: 51.5074, lon: -0.1278, city: 'London', country: 'UK', proto: 'HTTPS', color: '#00ff88' },
+      { id: 'frankfurt', label: '52.58.112.44 (Frankfurt)', lat: 50.1109, lon: 8.6821, city: 'Frankfurt', country: 'DE', proto: 'HTTPS', color: '#00ff88' },
+      { id: 'tokyo', label: '133.242.18.9 (Tokyo)', lat: 35.6762, lon: 139.6503, city: 'Tokyo', country: 'JP', proto: 'DNS', color: '#38bdf8' },
+      { id: 'singapore', label: '103.253.144.1 (Singapore)', lat: 1.3521, lon: 103.8198, city: 'Singapore', country: 'SG', proto: 'SSH', color: '#ffaa00' },
+      { id: 'sydney', label: '139.130.4.5 (Sydney)', lat: -33.8688, lon: 151.2093, city: 'Sydney', country: 'AU', proto: 'HTTPS', color: '#00ff88' },
+      { id: 'saopaulo', label: '177.18.204.12 (São Paulo)', lat: -23.5505, lon: -46.6333, city: 'São Paulo', country: 'BR', proto: 'ALERT', color: '#f43f5e' },
+      { id: 'johannesburg', label: '196.25.1.1 (Johannesburg)', lat: -26.2041, lon: 28.0473, city: 'Johannesburg', country: 'ZA', proto: 'SSH', color: '#ffaa00' },
+      { id: 'dubai', label: '94.200.20.10 (Dubai)', lat: 25.2048, lon: 55.2708, city: 'Dubai', country: 'AE', proto: 'HTTPS', color: '#00ff88' },
+      { id: 'newyork', label: '198.51.100.77 (New York)', lat: 40.7128, lon: -74.0060, city: 'New York', country: 'US', proto: 'HTTPS', color: '#00ff88' }
+    ];
+
+    function generateRandomTelemetry() {
+      // Pick 5 to 7 random cities
+      const shuffled = [...TARGET_CITIES].sort(() => 0.5 - Math.random());
+      const selected = shuffled.slice(0, Math.floor(Math.random() * 3) + 5);
+
+      const nodes = [];
+      const links = [];
+
+      selected.forEach((city, idx) => {
+        nodes.push({
+          id: city.id,
+          lat: city.lat,
+          lon: city.lon,
+          label: city.label,
+          color: city.color,
+          tooltipHtml: `
+            <div style="font-size: 11px; font-family: monospace;">
+              <div style="font-weight: bold; color: #00f3ff; margin-bottom: 2px;">📍 ${city.city}, ${city.country}</div>
+              <div style="color: #cbd5e1;">Target: ${city.label}</div>
+              <div style="color: #94a3b8; font-size: 10px; margin-top: 2px;">Proto: <b style="color: ${city.color}">${city.proto}</b></div>
+            </div>
+          `
+        });
+
+        links.push({
+          id: `link-${city.id}`,
+          source: { lat: 37.7749, lon: -122.4194 },
+          target: { lat: city.lat, lon: city.lon },
+          color: city.color,
+          speed: 0.00012 + (idx * 0.00003)
+        });
+      });
+
+      map.setNodes(nodes);
+      map.setLinks(links);
+
+      document.getElementById('activeCount').innerText = `${links.length} Active Links`;
+      showDetails('TELEMETRY GENERATED', {
+        'Status': 'Live Stream Active',
+        'Nodes Added': nodes.length,
+        'Arcs Flowing': links.length,
+        'Host Station': 'San Francisco (37.77, -122.41)'
+      });
+    }
+
+    function showDetails(title, obj) {
+      let html = `<div style="color: #00ff88; font-weight: bold; margin-bottom: 6px;">${title}</div>`;
+      for (const [k, v] of Object.entries(obj)) {
+        html += `
+          <div class="meta-row">
+            <span class="meta-key">${k}:</span>
+            <span class="meta-val">${v}</span>
+          </div>
+        `;
+      }
+      document.getElementById('inspectorContent').innerHTML = html;
+    }
+
+    // Button event listeners
+    document.getElementById('btnRandom').addEventListener('click', generateRandomTelemetry);
+    document.getElementById('btnToggleBasemap').addEventListener('click', () => {
+      const mode = map.toggleBasemapMode();
+      showDetails('BASEMAP TOGGLED', {
+        'Current Mode': mode.toUpperCase(),
+        'Vector Offline': mode === 'vector' ? 'YES (100% Offline)' : 'NO',
+        'OSM Dark Tiles': mode === 'osm' ? 'YES (Inverted Dark)' : 'NO'
+      });
+    });
+
+    document.getElementById('btnFlySF').addEventListener('click', () => map.flyTo(37.7749, -122.4194, 6));
+    document.getElementById('btnFlyLondon').addEventListener('click', () => map.flyTo(51.5074, -0.1278, 6));
+    document.getElementById('btnFlyTokyo').addEventListener('click', () => map.flyTo(35.6762, 139.6503, 6));
+    document.getElementById('btnResetView').addEventListener('click', () => map.flyTo(28, 0, 2.3));
+    document.getElementById('btnClear').addEventListener('click', () => {
+      map.clearLinks();
+      map.clearNodes();
+      document.getElementById('activeCount').innerText = '0 Links';
+      document.getElementById('inspectorContent').innerHTML = '<p style="color: #64748b;">Cleared all active links and points.</p>';
+    });
+
+    // Generate initial links on startup
+    generateRandomTelemetry();
+  </script>
+</body>
+</html>
+

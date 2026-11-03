@@ -1,0 +1,162 @@
+/* ==========================================================================
+   GeoArcsMap - Interactive World Map, Curved Particle Arcs & Nodes Engine
+   CSS Styling: Markers, Beziers, Tooltips, Dark Mode Tiles & Pulsing Rings
+   ========================================================================== */
+
+/* Map Container baseline */
+.geo-arcs-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  background-color: #07090e;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Canvas Overlay for Particle Arcs */
+.geo-arcs-canvas,
+#arcCanvas {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 450;
+}
+
+/* OpenStreetMap Inverted Dark Tiles (Zero API Key Fallback) */
+.osm-dark-tiles {
+  filter: invert(100%) hue-rotate(180deg) brightness(85%) contrast(90%) !important;
+}
+
+/* Dedicated Top Tooltip Pane (Always on top of canvas and markers) */
+.leaflet-top-tooltip-pane,
+.leaflet-pane.leaflet-top-tooltip-pane {
+  z-index: 10000 !important;
+  pointer-events: none !important;
+}
+
+/* Cyber Node Tooltips */
+.leaflet-tooltip.cyber-tooltip,
+.cyber-tooltip {
+  background: #000000 !important;
+  background-color: #000000 !important;
+  color: #f1f5f9 !important;
+  border: 1px solid #00f3ff !important;
+  border-radius: 6px !important;
+  box-shadow: 0 0 16px rgba(0, 243, 255, 0.4), 0 8px 30px rgba(0, 0, 0, 0.98) !important;
+  padding: 8px 12px !important;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  pointer-events: none !important;
+  opacity: 1.0 !important;
+  white-space: normal;
+  max-width: 320px;
+}
+
+/* Country Boundary Tooltip */
+.leaflet-tooltip.cyber-country-tooltip,
+.cyber-country-tooltip {
+  background: #000000 !important;
+  background-color: #000000 !important;
+  color: #00f3ff !important;
+  border: 1px solid rgba(0, 243, 255, 0.5) !important;
+  border-radius: 4px !important;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+  box-shadow: 0 0 12px rgba(0, 243, 255, 0.25) !important;
+  pointer-events: none !important;
+}
+
+/* Host Location Marker Pin */
+.host-marker-wrapper {
+  background: transparent !important;
+  border: none !important;
+}
+
+.host-marker-pin {
+  width: 22px;
+  height: 22px;
+  background: #00f3ff;
+  border: 2.5px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+  position: relative;
+  cursor: pointer;
+}
+
+.host-marker-pin::after {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1.5px solid #00f3ff;
+  animation: geo-arcs-pulse-ring 2s infinite;
+}
+
+@keyframes geo-arcs-pulse-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* Remote Node Marker with Label Pill */
+.remote-marker-wrapper {
+  background: transparent !important;
+  border: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  text-align: center !important;
+}
+
+.remote-marker-node {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.remote-marker-wrapper:hover .remote-marker-node {
+  transform: scale(1.3);
+  border-color: #ffffff;
+}
+
+.remote-marker-ip-label {
+  margin-top: 3px;
+  background: #000000;
+  color: #00f3ff;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  padding: 1px 4px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 243, 255, 0.35);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  letter-spacing: -0.2px;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.remote-marker-wrapper:hover .remote-marker-ip-label {
+  border-color: #00f3ff;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(0, 243, 255, 0.5);
+}
+

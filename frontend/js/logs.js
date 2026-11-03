@@ -250,9 +250,9 @@ class AegisLogsManager {
     if (this.systemFilterSearch) {
       const s = this.systemFilterSearch.toLowerCase();
       filtered = filtered.filter(l => 
-        (l.message && l.message.toLowerCase().includes(s)) ||
-        (l.source && l.source.toLowerCase().includes(s)) ||
-        (String(l.event_id).includes(s))
+        (String(l.message || '').toLowerCase().includes(s)) ||
+        (String(l.source || '').toLowerCase().includes(s)) ||
+        (String(l.event_id || '').includes(s))
       );
     }
 
@@ -277,15 +277,19 @@ class AegisLogsManager {
         badgeClass = "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
       }
 
+      const msgStr = String(log.message || '');
+      const srcStr = String(log.source || 'system');
+      const safeTitle = msgStr.replace(/"/g, '&quot;');
+
       return `
         <tr class="hover:bg-slate-800/40 transition cursor-pointer border-b border-slate-800/40 text-xs font-mono" data-sysid="${log.id}">
           <td class="py-2.5 px-3 text-slate-400 whitespace-nowrap">${log.timestamp || 'N/A'}</td>
           <td class="py-2.5 px-3">
             <span class="px-2 py-0.5 rounded text-[10px] font-bold ${badgeClass}">${lvl}</span>
           </td>
-          <td class="py-2.5 px-3 font-semibold text-slate-200 truncate max-w-[160px]" title="${log.source}">${log.source}</td>
-          <td class="py-2.5 px-3 text-cyan-400">${log.event_id}</td>
-          <td class="py-2.5 px-3 text-slate-300 truncate max-w-[420px]" title="${log.message.replace(/"/g, '&quot;')}">${log.message}</td>
+          <td class="py-2.5 px-3 font-semibold text-slate-200 truncate max-w-[160px]" title="${srcStr}">${srcStr}</td>
+          <td class="py-2.5 px-3 text-cyan-400">${log.event_id || 1000}</td>
+          <td class="py-2.5 px-3 text-slate-300 truncate max-w-[420px]" title="${safeTitle}">${msgStr}</td>
           <td class="py-2.5 px-3 text-right">
             <button class="view-sys-detail-btn px-2 py-1 rounded bg-slate-800 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-slate-700 text-[11px] transition" data-sysid="${log.id}">
               Inspect
@@ -363,12 +367,10 @@ class AegisLogsManager {
       });
     }
 
-    // Inject Test Event Modal Trigger
-    const injectBtn = document.getElementById('secInjectModalBtn');
-    if (injectBtn) {
-      injectBtn.addEventListener('click', () => {
-        document.getElementById('injectSecurityModal').classList.remove('hidden');
-      });
+    // Scan Logs for Threats Trigger
+    const scanBtn = document.getElementById('scanThreatsBtn');
+    if (scanBtn) {
+      scanBtn.addEventListener('click', () => this.scanLogsForThreats());
     }
   }
 
@@ -514,12 +516,10 @@ class AegisLogsManager {
       });
     }
 
-    // Simulate Login Modal Trigger
-    const simBtn = document.getElementById('openSimulateLoginBtn');
-    if (simBtn) {
-      simBtn.addEventListener('click', () => {
-        document.getElementById('simulateLoginModal').classList.remove('hidden');
-      });
+    // Auth Scan Threats Trigger
+    const authScanBtn = document.getElementById('authScanThreatsBtn');
+    if (authScanBtn) {
+      authScanBtn.addEventListener('click', () => this.scanLogsForThreats());
     }
   }
 
@@ -743,62 +743,36 @@ class AegisLogsManager {
       });
     }
 
-    // Simulate Login Form
-    const simForm = document.getElementById('simulateLoginForm');
-    if (simForm) {
-      simForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const username = document.getElementById('simUser').value;
-        const status = document.getElementById('simStatus').value;
-        const logon_type = document.getElementById('simType').value;
-        const source_ip = document.getElementById('simIP').value;
-        const failure_reason = document.getElementById('simReason').value;
+  }
 
-        try {
-          const resp = await fetch('/api/logs/simulate-login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, status, logon_type, source_ip, failure_reason })
-          });
-          if (resp.ok) {
-            document.getElementById('simulateLoginModal').classList.add('hidden');
-            window.AegisUI.showToast(`Simulated ${status} logon for ${username}`, status === 'FAILED' ? "warning" : "success");
-            this.fetchLoginAttempts(true);
-            this.fetchSecurityLogs(false);
+  async scanLogsForThreats() {
+    try {
+      if (window.AegisUI) {
+        window.AegisUI.showToast("Analyzing system logs for threats...", "info");
+      }
+      const resp = await fetch('/api/logs/scan-threats', { method: 'POST' });
+      if (resp.ok) {
+        const data = await resp.json();
+        const found = data.threats_discovered_now || 0;
+        const total = data.total_active_threats || 0;
+        if (found > 0) {
+          if (window.AegisUI) {
+            window.AegisUI.showToast(`🚨 Detected ${found} new threat(s) in system logs! Total: ${total}`, "warning");
           }
-        } catch (err) {
-          window.AegisUI.showToast("Failed to simulate login: " + err, "error");
-        }
-      });
-    }
-
-    // Inject Security Event Form
-    const injectForm = document.getElementById('injectSecurityForm');
-    if (injectForm) {
-      injectForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const category = document.getElementById('injCategory').value;
-        const severity = document.getElementById('injSeverity').value;
-        const title = document.getElementById('injTitle').value;
-        const description = document.getElementById('injDescription').value;
-        const source_ip = document.getElementById('injIP').value;
-        const user = document.getElementById('injUser').value;
-
-        try {
-          const resp = await fetch('/api/logs/inject-security-event', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ category, severity, title, description, source_ip, user, action: "TEST_INJECTION" })
-          });
-          if (resp.ok) {
-            document.getElementById('injectSecurityModal').classList.add('hidden');
-            window.AegisUI.showToast("Security incident registered", "warning");
-            this.fetchSecurityLogs(true);
+        } else {
+          if (window.AegisUI) {
+            window.AegisUI.showToast(`✓ Scan completed. ${data.scanned_system_events || 0} events analyzed. No new threats.`, "success");
           }
-        } catch (err) {
-          window.AegisUI.showToast("Failed to inject incident: " + err, "error");
         }
-      });
+        this.fetchSecurityLogs(false);
+        this.fetchLoginAttempts(false);
+        this.fetchStats();
+      }
+    } catch (e) {
+      console.warn("Threat scan failed:", e);
+      if (window.AegisUI) {
+        window.AegisUI.showToast("Log threat scan error: " + (e.message || e), "error");
+      }
     }
   }
 

@@ -118,21 +118,12 @@ class BlockIPRequest(BaseModel):
 class UnblockIPRequest(BaseModel):
     ip: str = Field(..., description="IP address to unblock")
 
-class SimulateLoginRequest(BaseModel):
-    username: str = Field(default="admin", description="Target username")
-    status: str = Field(default="FAILED", description="Status: SUCCESS or FAILED")
-    logon_type: str = Field(default="Remote Desktop (RDP)", description="Logon category")
-    source_ip: str = Field(default="198.51.100.45", description="Source IP address")
-    failure_reason: str = Field(default="Bad Password / Invalid Credentials", description="Reason for failure")
-
-class InjectSecurityEventRequest(BaseModel):
-    category: str = Field(default="AUTHENTICATION", description="Category: AUTHENTICATION, PROCESS, FIREWALL, PRIVILEGE, AUDIT")
-    severity: str = Field(default="HIGH", description="Severity: CRITICAL, HIGH, MEDIUM, LOW, INFO")
-    title: str = Field(..., description="Title of incident")
-    description: str = Field(..., description="Incident details")
-    source_ip: str = Field(default="198.51.100.45", description="Source IP")
-    user: str = Field(default="admin", description="Associated username")
-    action: str = Field(default="THREAT_ALERT", description="Audit action identifier")
+class ThreatScanResponse(BaseModel):
+    timestamp: str
+    os: Optional[str] = None
+    scanned_system_events: int
+    threats_discovered_now: int
+    total_active_threats: int
 
 # REST Endpoints
 @app.get("/api/system/status")
@@ -257,39 +248,11 @@ async def api_get_log_stats():
     """Returns aggregated real-time counts across system, security, and authentication."""
     return log_monitor.get_summary_stats()
 
-@app.post("/api/logs/simulate-login")
-async def api_simulate_login(req: SimulateLoginRequest):
-    """Simulates an authentication attempt for incident response testing."""
-    record = log_monitor.record_login_attempt(
-        username=req.username,
-        status=req.status,
-        logon_type=req.logon_type,
-        source_ip=req.source_ip,
-        failure_reason=req.failure_reason
-    )
-    return {
-        "success": True,
-        "message": "Authentication attempt logged",
-        "record": record
-    }
-
-@app.post("/api/logs/inject-security-event")
-async def api_inject_security_event(req: InjectSecurityEventRequest):
-    """Injects a custom security incident into the audit stream."""
-    event = {
-        "category": req.category,
-        "severity": req.severity,
-        "title": req.title,
-        "description": req.description,
-        "source_ip": req.source_ip,
-        "user": req.user,
-        "action": req.action
-    }
-    log_monitor.add_security_event(event)
-    return {
-        "success": True,
-        "message": "Security incident registered"
-    }
+@app.post("/api/logs/scan-threats")
+async def api_scan_threats():
+    """Triggers an active comprehensive threat analysis across all system and security logs."""
+    result = log_monitor.scan_all_logs_for_threats()
+    return result
 
 # WebSocket Streaming Endpoint
 @app.websocket("/ws/live")
@@ -352,6 +315,12 @@ async def websocket_live_stream(websocket: WebSocket):
                         "logins": logins,
                         "sessions": sessions,
                         "stats": stats
+                    }))
+                elif action == "SCAN_THREATS":
+                    scan_res = log_monitor.scan_all_logs_for_threats()
+                    await websocket.send_text(json.dumps({
+                        "type": "THREAT_SCAN_RESULT",
+                        "data": scan_res
                     }))
             except Exception:
                 pass

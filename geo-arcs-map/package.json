@@ -1,0 +1,40 @@
+{
+  "name": "geo-arcs-map",
+  "version": "1.0.0",
+  "description": "Zero-API-Key interactive world map with animated curved quadratic Bezier packet arcs, host stations, and destination anchor nodes.",
+  "main": "dist/geo-arcs-map.js",
+  "module": "src/index.esm.js",
+  "style": "dist/geo-arcs-map.css",
+  "scripts": {
+    "test": "echo \"Open examples/demo.html in any browser to test\""
+  },
+  "keywords": [
+    "map",
+    "world-map",
+    "arcs",
+    "bezier",
+    "particles",
+    "leaflet",
+    "network-monitor",
+    "threat-map",
+    "cyber",
+    "soc",
+    "data-visualization"
+  ],
+  "peerDependencies": {
+    "leaflet": "^1.9.0"
+  },
+  "devDependencies": {
+    "leaflet": "^1.9.4"
+  },
+  "author": "AegisNet Engine Team",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src",
+    "examples",
+    "README.md",
+    "AGENT_GUIDE.md"
+  ]
+}
+

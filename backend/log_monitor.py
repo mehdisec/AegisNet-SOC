@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 import socket
@@ -18,6 +19,7 @@ from backend.config import (
 )
 from backend.geoip_service import geo_service
 from backend.os_detector import get_system_info
+from backend.log_threat_detector import log_threat_detector
 
 logger = logging.getLogger("aegis.log_monitor")
 
@@ -31,6 +33,19 @@ if platform.system() == "Windows":
         HAS_WIN32EVTLOG = True
     except ImportError:
         HAS_WIN32EVTLOG = False
+
+
+def decode_log_value(val) -> str:
+    """Safely decodes log values (handles systemd byte arrays, None, and integers)."""
+    if val is None:
+        return ""
+    if isinstance(val, list):
+        try:
+            return bytes(val).decode("utf-8", errors="replace").strip()
+        except Exception:
+            return " ".join(str(x) for x in val)
+    return str(val).strip()
+
 
 class LogMonitor:
     def __init__(self):
@@ -56,7 +71,9 @@ class LogMonitor:
         if os.path.exists(SECURITY_LOGS_FILE):
             try:
                 with open(SECURITY_LOGS_FILE, "r", encoding="utf-8") as f:
-                    self.security_logs = json.load(f)
+                    data = json.load(f)
+                    # Filter out any old simulated incidents
+                    self.security_logs = [x for x in data if "SIMULATE" not in x.get("id", "")]
             except Exception as e:
                 logger.warning(f"Could not load security logs: {e}")
                 self.security_logs = []
@@ -64,7 +81,9 @@ class LogMonitor:
         if os.path.exists(LOGIN_ATTEMPTS_FILE):
             try:
                 with open(LOGIN_ATTEMPTS_FILE, "r", encoding="utf-8") as f:
-                    self.login_attempts = json.load(f)
+                    data = json.load(f)
+                    # Filter out any old simulated logins
+                    self.login_attempts = [x for x in data if "SIMULATE" not in x.get("id", "")]
             except Exception as e:
                 logger.warning(f"Could not load login attempts: {e}")
                 self.login_attempts = []
@@ -85,44 +104,40 @@ class LogMonitor:
             logger.warning(f"Failed to persist log data: {e}")
 
     def _bootstrap_initial_data(self):
-        """Pulls historical records from OS event streams if cache is empty or needs refresh."""
+        """Pulls genuine historical records from OS event streams."""
         if not self.login_attempts:
             self._harvest_os_logins()
 
-        if not self.security_logs:
-            # Add initial system audit baseline entry
-            sys_info = self.system_info
-            self.security_logs.append({
-                "id": f"SEC-{int(time.time()*1000)}-001",
-                "timestamp": datetime.datetime.now().isoformat(),
-                "category": "AUDIT",
-                "severity": "INFO",
-                "title": "AegisNet SOC Auditing Initialized",
-                "description": f"Host telemetry initialized on {sys_info['hostname']} ({sys_info['os']} {sys_info['os_release']}). Administrative Elevation: {sys_info['is_admin']}.",
-                "source_ip": "127.0.0.1",
-                "user": "SYSTEM",
-                "action": "MONITOR_STARTED",
-                "geo": geo_service.host_location
-            })
-            self._save_persisted_logs()
+        if self.is_windows and HAS_WIN32EVTLOG:
+            self._harvest_windows_security_channel()
+        elif self.is_linux:
+            self._harvest_linux_security_logs()
 
     # =========================================================================
-    # 1. LIVE SYSTEM LOG MONITOR
+    # 1. LIVE SYSTEM LOG MONITOR (MULTI-SOURCE LINUX & WINDOWS)
     # =========================================================================
     def get_system_logs(self, limit: int = 100, level: Optional[str] = None, source: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Retrieves live system event logs from OS kernel/subsystems."""
+        """Retrieves live system event logs from OS kernel/subsystems and runs real-time threat detection."""
         limit = min(max(10, limit), 300)
         now = time.time()
 
         # Cache live reads for 2.0 seconds to prevent hammering the event log subsystem
         if (now - self.last_system_read_time) > 2.0 or not self.system_logs_cache:
-            if self.is_windows and HAS_WIN32EVTLOG:
-                self.system_logs_cache = self._read_windows_system_logs(limit=200)
+            if self.is_windows:
+                self.system_logs_cache = self._read_windows_system_logs(limit=250)
             elif self.is_linux:
-                self.system_logs_cache = self._read_linux_system_logs(limit=200)
+                self.system_logs_cache = self._read_linux_system_logs(limit=250)
             else:
-                self.system_logs_cache = self._generate_fallback_system_logs()
+                self.system_logs_cache = []
+
             self.last_system_read_time = now
+
+            # Automated threat analysis across newly harvested system events
+            if self.system_logs_cache:
+                os_mode = "windows" if self.is_windows else "linux"
+                discovered_threats = log_threat_detector.scan_log_batch(self.system_logs_cache[:100], os_type=os_mode)
+                for threat in discovered_threats:
+                    self.add_security_event(threat)
 
         events = list(self.system_logs_cache)
 
@@ -138,8 +153,8 @@ class LogMonitor:
             s_lower = search.lower()
             events = [
                 e for e in events
-                if s_lower in e.get("message", "").lower()
-                or s_lower in e.get("source", "").lower()
+                if s_lower in str(e.get("message", "")).lower()
+                or s_lower in str(e.get("source", "")).lower()
                 or s_lower in str(e.get("event_id", ""))
             ]
 
@@ -147,79 +162,124 @@ class LogMonitor:
 
     def _read_windows_system_logs(self, limit: int = 200) -> List[Dict[str, Any]]:
         """Reads real records from the Windows 'System' event log channel."""
-        import win32evtlog
-        import win32evtlogutil
-
         records = []
-        try:
-            h = win32evtlog.OpenEventLog(None, "System")
-            flags = win32evtlog.EVENTLOG_BACKWARDS_READ | win32evtlog.EVENTLOG_SEQUENTIAL_READ
-            
-            while len(records) < limit:
-                batch = win32evtlog.ReadEventLog(h, flags, 0)
-                if not batch:
-                    break
+        if HAS_WIN32EVTLOG:
+            try:
+                import win32evtlog
+                import win32evtlogutil
 
-                for e in batch:
-                    # Map event type to standardized severity
-                    if e.EventType == win32evtlog.EVENTLOG_ERROR_TYPE:
-                        level = "ERROR"
-                    elif e.EventType == win32evtlog.EVENTLOG_WARNING_TYPE:
-                        level = "WARNING"
-                    elif e.EventType == win32evtlog.EVENTLOG_AUDIT_FAILURE:
-                        level = "CRITICAL"
-                    elif e.EventType == win32evtlog.EVENTLOG_AUDIT_SUCCESS:
-                        level = "AUDIT"
-                    else:
-                        level = "INFO"
+                h = win32evtlog.OpenEventLog(None, "System")
+                flags = win32evtlog.EVENTLOG_BACKWARDS_READ | win32evtlog.EVENTLOG_SEQUENTIAL_READ
+                
+                while len(records) < limit:
+                    batch = win32evtlog.ReadEventLog(h, flags, 0)
+                    if not batch:
+                        break
 
-                    event_id = e.EventID & 0xFFFF
+                    for e in batch:
+                        if e.EventType == win32evtlog.EVENTLOG_ERROR_TYPE:
+                            lvl = "ERROR"
+                        elif e.EventType == win32evtlog.EVENTLOG_WARNING_TYPE:
+                            lvl = "WARNING"
+                        elif e.EventType == win32evtlog.EVENTLOG_AUDIT_FAILURE:
+                            lvl = "CRITICAL"
+                        elif e.EventType == win32evtlog.EVENTLOG_AUDIT_SUCCESS:
+                            lvl = "AUDIT"
+                        else:
+                            lvl = "INFO"
 
-                    # Format human readable message
-                    try:
-                        msg = win32evtlogutil.SafeFormatMessage(e, "System").strip()
-                        if not msg or msg.startswith("The description for Event ID"):
+                        event_id = e.EventID & 0xFFFF
+
+                        try:
+                            msg = win32evtlogutil.SafeFormatMessage(e, "System").strip()
+                            if not msg or msg.startswith("The description for Event ID"):
+                                if e.StringInserts:
+                                    msg = " ".join(str(s) for s in e.StringInserts)
+                                else:
+                                    msg = f"System event {event_id} from {e.SourceName}"
+                        except Exception:
                             if e.StringInserts:
                                 msg = " ".join(str(s) for s in e.StringInserts)
                             else:
                                 msg = f"System event {event_id} from {e.SourceName}"
-                    except Exception:
-                        if e.StringInserts:
-                            msg = " ".join(str(s) for s in e.StringInserts)
+
+                        t_gen = e.TimeGenerated
+                        time_str = t_gen.strftime("%Y-%m-%d %H:%M:%S") if hasattr(t_gen, "strftime") else str(t_gen)
+
+                        records.append({
+                            "id": f"SYS-{e.RecordNumber}",
+                            "timestamp": time_str,
+                            "source": e.SourceName or "Kernel",
+                            "event_id": event_id,
+                            "level": lvl,
+                            "category": e.EventCategory,
+                            "message": msg,
+                            "computer": e.ComputerName or socket.gethostname()
+                        })
+
+                        if len(records) >= limit:
+                            break
+
+                win32evtlog.CloseEventLog(h)
+            except Exception as ex:
+                logger.warning(f"Error querying Windows System event log via pywin32: {ex}")
+
+        # PowerShell fallback if pywin32 failed or produced 0 records
+        if not records:
+            try:
+                ps_cmd = f"Get-WinEvent -LogName System -MaxEvents {min(limit, 50)} | Select-Object RecordId, TimeCreated, ProviderName, Id, LevelDisplayName, Message | ConvertTo-Json -Compress"
+                proc = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3.5)
+                if proc.returncode == 0 and proc.stdout.strip():
+                    parsed = json.loads(proc.stdout)
+                    items = parsed if isinstance(parsed, list) else [parsed]
+                    for item in items:
+                        lvl_name = str(item.get("LevelDisplayName") or "Info").upper()
+                        if "ERR" in lvl_name:
+                            lvl = "ERROR"
+                        elif "WARN" in lvl_name:
+                            lvl = "WARNING"
+                        elif "CRIT" in lvl_name:
+                            lvl = "CRITICAL"
                         else:
-                            msg = f"System event {event_id} from {e.SourceName}"
+                            lvl = "INFO"
 
-                    t_gen = e.TimeGenerated
-                    time_str = t_gen.strftime("%Y-%m-%d %H:%M:%S") if hasattr(t_gen, "strftime") else str(t_gen)
+                        # Extract timestamp
+                        t_raw = item.get("TimeCreated")
+                        t_str = str(t_raw) if t_raw else datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                    records.append({
-                        "id": f"SYS-{e.RecordNumber}",
-                        "timestamp": time_str,
-                        "source": e.SourceName or "Kernel",
-                        "event_id": event_id,
-                        "level": level,
-                        "category": e.EventCategory,
-                        "message": msg,
-                        "computer": e.ComputerName or socket.gethostname()
-                    })
-
-                    if len(records) >= limit:
-                        break
-
-            win32evtlog.CloseEventLog(h)
-        except Exception as ex:
-            logger.warning(f"Error querying Windows System event log: {ex}")
-            if not records:
-                records = self._generate_fallback_system_logs()
+                        records.append({
+                            "id": f"SYS-{item.get('RecordId', len(records)+1)}",
+                            "timestamp": t_str,
+                            "source": item.get("ProviderName") or "Kernel",
+                            "event_id": item.get("Id", 0),
+                            "level": lvl,
+                            "category": 0,
+                            "message": str(item.get("Message") or f"System event {item.get('Id')}").strip(),
+                            "computer": socket.gethostname()
+                        })
+            except Exception as ps_err:
+                logger.debug(f"PowerShell system log fallback error: {ps_err}")
 
         return records
 
-    def _read_linux_system_logs(self, limit: int = 150) -> List[Dict[str, Any]]:
-        """Reads system events from journalctl or /var/log/syslog on Linux."""
+    def _read_linux_system_logs(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """
+        Multi-Source Linux System Log Reader:
+        1. systemd journalctl JSON output (with safe byte-array string decoding)
+        2. systemd journalctl plain-text output
+        3. /var/log/syslog and /var/log/messages files
+        4. dmesg -T kernel ring buffer (universal across all Linux kernels)
+        5. /var/log/dmesg & /var/log/kern.log
+        """
         records = []
+        host = socket.gethostname()
+
+        # ---------------------------------------------------------------------
+        # Source 1: journalctl JSON
+        # ---------------------------------------------------------------------
         try:
             cmd = ["journalctl", "-n", str(limit), "-o", "json", "--no-pager"]
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.5)
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=4.5)
             if proc.returncode == 0 and proc.stdout:
                 for line in proc.stdout.splitlines():
                     if not line.strip():
@@ -227,78 +287,199 @@ class LogMonitor:
                     try:
                         item = json.loads(line)
                         prio = int(item.get("PRIORITY", 6))
-                        level = "INFO"
                         if prio <= 2:
-                            level = "CRITICAL"
+                            lvl = "CRITICAL"
                         elif prio == 3:
-                            level = "ERROR"
+                            lvl = "ERROR"
                         elif prio == 4:
-                            level = "WARNING"
+                            lvl = "WARNING"
+                        else:
+                            lvl = "INFO"
 
-                        usec = int(item.get("__REALTIME_TIMESTAMP", time.time() * 1000000))
+                        usec = int(item.get("__REALTIME_TIMESTAMP") or item.get("_SOURCE_REALTIME_TIMESTAMP") or (time.time() * 1000000))
                         dt = datetime.datetime.fromtimestamp(usec / 1000000.0)
+
+                        # Decode message cleanly (handles byte lists from binary journal records)
+                        msg_clean = decode_log_value(item.get("MESSAGE"))
+                        if not msg_clean:
+                            continue
+
+                        src_clean = decode_log_value(item.get("_COMM") or item.get("SYSLOG_IDENTIFIER") or item.get("UNIT") or "kernel")
+                        hostname_clean = decode_log_value(item.get("_HOSTNAME") or host)
+                        msg_id = item.get("MESSAGE_ID") or 1000
 
                         records.append({
                             "id": f"LNX-{usec}",
                             "timestamp": dt.strftime("%Y-%m-%d %H:%M:%S"),
-                            "source": item.get("_COMM") or item.get("SYSLOG_IDENTIFIER") or "kernel",
-                            "event_id": item.get("MESSAGE_ID", 1000),
-                            "level": level,
+                            "source": src_clean,
+                            "event_id": str(msg_id)[:12],
+                            "level": lvl,
                             "category": item.get("SYSLOG_FACILITY", 0),
-                            "message": item.get("MESSAGE", ""),
-                            "computer": item.get("_HOSTNAME", socket.gethostname())
+                            "message": msg_clean,
+                            "computer": hostname_clean
                         })
                     except Exception:
                         continue
-                records.reverse()
+                if records:
+                    records.reverse()
+                    return records
         except Exception as e:
-            logger.debug(f"Linux journalctl read failed: {e}")
+            logger.debug(f"Linux journalctl JSON query failed: {e}")
 
+        # ---------------------------------------------------------------------
+        # Source 2: journalctl Plain Text
+        # ---------------------------------------------------------------------
         if not records:
-            records = self._generate_fallback_system_logs()
+            try:
+                cmd = ["journalctl", "-n", str(limit), "--no-pager"]
+                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=4.0)
+                if proc.returncode == 0 and proc.stdout:
+                    lines = proc.stdout.splitlines()
+                    for idx, line in enumerate(reversed(lines)):
+                        parsed = self._parse_syslog_line(line, f"LNX-JNL-{idx}", host)
+                        if parsed:
+                            records.append(parsed)
+                        if len(records) >= limit:
+                            break
+                    if records:
+                        return records
+            except Exception as e:
+                logger.debug(f"Linux journalctl text query failed: {e}")
 
-        return records
+        # ---------------------------------------------------------------------
+        # Source 3: /var/log/syslog & /var/log/messages
+        # ---------------------------------------------------------------------
+        if not records:
+            for sys_path in ("/var/log/syslog", "/var/log/messages"):
+                if os.path.exists(sys_path) and os.access(sys_path, os.R_OK):
+                    try:
+                        with open(sys_path, "r", encoding="utf-8", errors="ignore") as f:
+                            raw_lines = deque(f, maxlen=limit)
+                        for idx, line in enumerate(reversed(raw_lines)):
+                            parsed = self._parse_syslog_line(line, f"LNX-FILE-{idx}", host)
+                            if parsed:
+                                records.append(parsed)
+                        if records:
+                            return records
+                    except Exception as e:
+                        logger.debug(f"Could not read {sys_path}: {e}")
 
-    def _generate_fallback_system_logs(self) -> List[Dict[str, Any]]:
-        """Generates realistic host system health and kernel messages as fallback."""
-        host = socket.gethostname()
-        now = datetime.datetime.now()
-        entries = []
-        
-        sample_templates = [
-            ("Service Control Manager", 7036, "INFO", "The AegisNet Security SOC Service entered the running state."),
-            ("Kernel-General", 1, "INFO", "System time synchronized with network hardware clock."),
-            ("TCPIP", 4227, "WARNING", "TCP/IP has chosen to close an idle lingering socket connection to preserve buffer pools."),
-            ("DistributedCOM", 10016, "WARNING", "The application-specific permission settings do not grant Local Activation permission for the COM Server Application."),
-            ("Netwtw06", 6000, "INFO", "Wireless physical layer link quality optimal (RSSI -48 dBm)."),
-            ("DNS Client Events", 3008, "INFO", "DNS resolver cache successfully purged and updated."),
-            ("Microsoft-Windows-WindowsUpdateClient", 19, "INFO", "Installation Successful: Windows Intelligence definition update deployed.")
-        ]
+        # ---------------------------------------------------------------------
+        # Source 4: dmesg -T (Kernel Ring Buffer)
+        # ---------------------------------------------------------------------
+        if not records:
+            try:
+                proc = subprocess.run(["dmesg", "-T"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3.0)
+                if proc.returncode == 0 and proc.stdout:
+                    lines = proc.stdout.splitlines()
+                    for idx, line in enumerate(reversed(lines[-limit:])):
+                        # dmesg line format: [Mon Nov  3 15:10:02 2026] <message>
+                        m = re.match(r"^\[([^\]]+)\]\s*(.*)$", line)
+                        if m:
+                            t_str = m.group(1).strip()
+                            msg_str = m.group(2).strip()
+                            lvl = "INFO"
+                            m_lower = msg_str.lower()
+                            if "error" in m_lower or "failed" in m_lower or "critical" in m_lower or "segfault" in m_lower:
+                                lvl = "ERROR"
+                            elif "warning" in m_lower or "warn" in m_lower:
+                                lvl = "WARNING"
 
-        for i, (src, eid, lvl, msg) in enumerate(sample_templates):
-            delta = datetime.timedelta(minutes=i * 4 + 1)
-            entries.append({
-                "id": f"FALLBACK-{i+1}",
-                "timestamp": (now - delta).strftime("%Y-%m-%d %H:%M:%S"),
-                "source": src,
-                "event_id": eid,
-                "level": lvl,
+                            records.append({
+                                "id": f"LNX-DMESG-{idx}",
+                                "timestamp": t_str,
+                                "source": "kernel",
+                                "event_id": "DMESG",
+                                "level": lvl,
+                                "category": 0,
+                                "message": msg_str,
+                                "computer": host
+                            })
+                    if records:
+                        return records
+            except Exception as e:
+                logger.debug(f"dmesg read failed: {e}")
+
+        # ---------------------------------------------------------------------
+        # Source 5: /var/log/kern.log & /var/log/dmesg
+        # ---------------------------------------------------------------------
+        if not records:
+            for kpath in ("/var/log/kern.log", "/var/log/dmesg"):
+                if os.path.exists(kpath) and os.access(kpath, os.R_OK):
+                    try:
+                        with open(kpath, "r", encoding="utf-8", errors="ignore") as f:
+                            raw_lines = deque(f, maxlen=limit)
+                        for idx, line in enumerate(reversed(raw_lines)):
+                            parsed = self._parse_syslog_line(line, f"LNX-KERN-{idx}", host)
+                            if parsed:
+                                records.append(parsed)
+                        if records:
+                            return records
+                    except Exception:
+                        pass
+
+        # If system logs are restricted by permissions, provide genuine system guidance notice
+        if not records:
+            records.append({
+                "id": f"LNX-PERM-NOTICE-{int(time.time())}",
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "source": "AegisNet-SystemAudit",
+                "event_id": "PERM_NOTICE",
+                "level": "WARNING",
                 "category": 0,
-                "message": msg,
+                "message": "Linux system log access restricted: Run AegisNet with root (sudo) or add user to 'systemd-journal' and 'adm' groups: sudo usermod -aG systemd-journal,adm $USER",
                 "computer": host
             })
 
-        return entries
+        return records
+
+    def _parse_syslog_line(self, line: str, record_id: str, default_host: str) -> Optional[Dict[str, Any]]:
+        """Parses standard Linux RFC 3164 / 5424 syslog format."""
+        line = line.strip()
+        if not line:
+            return None
+
+        # Pattern: Month Day HH:MM:SS host process[pid]: message
+        # Or: ISO8601 host process[pid]: message
+        match = re.match(r"^([A-Z][a-z]{2}\s+\d+\s+\d+:\d+:\d+|\d{4}-\d{2}-\d{2}T\d+:\d+:\d+[^\s]*)\s+([^\s:]+)\s+([^:\[]+)(?:\[\d+\])?:?\s*(.*)$", line)
+        if match:
+            t_str = match.group(1)
+            h_str = match.group(2)
+            src_str = match.group(3)
+            msg_str = match.group(4)
+        else:
+            t_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            h_str = default_host
+            src_str = "system"
+            msg_str = line
+
+        lvl = "INFO"
+        m_lower = msg_str.lower()
+        if any(w in m_lower for w in ("error", "failed", "critical", "segfault", "panic", "fatal", "denied")):
+            lvl = "ERROR"
+        elif any(w in m_lower for w in ("warn", "warning", "rejected")):
+            lvl = "WARNING"
+
+        return {
+            "id": record_id,
+            "timestamp": t_str,
+            "source": src_str or "system",
+            "event_id": 1000,
+            "level": lvl,
+            "category": 0,
+            "message": msg_str,
+            "computer": h_str or default_host
+        }
 
     # =========================================================================
-    # 2. SECURITY LOG MONITOR
+    # 2. SECURITY LOG MONITOR & THREAT AUDIT
     # =========================================================================
     def get_security_logs(self, limit: int = 100, category: Optional[str] = None, severity: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
         """Retrieves threat audit, policy changes, and security incident logs."""
         limit = min(max(10, limit), 300)
 
-        # Harvest fresh events from Windows Security Channel if elevated, or Linux auth logs
-        if self.is_windows and HAS_WIN32EVTLOG and self.system_info.get("is_admin", False):
+        # Harvest fresh events from Windows Security Channel, Defender, System or Linux auth logs
+        if self.is_windows and HAS_WIN32EVTLOG:
             self._harvest_windows_security_channel()
         elif self.is_linux:
             self._harvest_linux_security_logs()
@@ -317,24 +498,31 @@ class LogMonitor:
             s_lower = search.lower()
             logs = [
                 l for l in logs
-                if s_lower in l.get("title", "").lower()
-                or s_lower in l.get("description", "").lower()
-                or s_lower in l.get("source_ip", "").lower()
-                or s_lower in l.get("user", "").lower()
+                if s_lower in str(l.get("title", "")).lower()
+                or s_lower in str(l.get("description", "")).lower()
+                or s_lower in str(l.get("source_ip", "")).lower()
+                or s_lower in str(l.get("user", "")).lower()
             ]
 
         return logs[:limit]
 
     def add_security_event(self, event: Dict[str, Any]):
-        """Adds a new security audit incident to the log stream."""
+        """Adds a genuine security audit incident to the log stream."""
+        if not event:
+            return
+
         if "id" not in event:
             event["id"] = f"SEC-{int(time.time()*1000)}-{len(self.security_logs)+1}"
         if "timestamp" not in event:
             event["timestamp"] = datetime.datetime.now().isoformat()
         if "geo" not in event and event.get("source_ip"):
-            event["geo"] = geo_service.lookup(event["source_ip"])
+            src = event["source_ip"]
+            event["geo"] = geo_service.lookup(src) if src not in ("127.0.0.1", "LOCAL", "::1") else geo_service.host_location
 
         with self.lock:
+            # Check duplicate by ID
+            if any(x.get("id") == event["id"] for x in self.security_logs):
+                return
             self.security_logs.insert(0, event)
             if len(self.security_logs) > MAX_LOG_EVENTS:
                 self.security_logs = self.security_logs[:MAX_LOG_EVENTS]
@@ -342,18 +530,21 @@ class LogMonitor:
         self._save_persisted_logs()
 
     def _harvest_windows_security_channel(self):
-        """Polls Windows Security Event Log (Admin privilege required)."""
+        """Polls Windows Security, Defender, System, and PowerShell channels for security incidents."""
+        if not HAS_WIN32EVTLOG:
+            return
+
         import win32evtlog
         import xml.etree.ElementTree as ET
 
+        ns = {'ns': 'http://schemas.microsoft.com/win/2004/08/events/event'}
+        new_events = []
+
+        # 1. Direct Security Channel (Admin or Event Log Readers privilege)
         try:
-            # Query security events: 4688 (Process Creation), 4720 (User Created), 1102 (Log Cleared), 4672 (Admin Privs)
-            query = "*[System[(EventID=4688 or EventID=4720 or EventID=1102 or EventID=4672 or EventID=5157)]]"
+            query = "*[System[(EventID=4688 or EventID=4720 or EventID=4728 or EventID=4732 or EventID=4756 or EventID=4740 or EventID=1102 or EventID=104 or EventID=4672 or EventID=5157)]]"
             q = win32evtlog.EvtQuery("Security", win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryReverseDirection, query)
-            events = win32evtlog.EvtNext(q, 15)
-            
-            ns = {'ns': 'http://schemas.microsoft.com/win/2004/08/events/event'}
-            new_events = []
+            events = win32evtlog.EvtNext(q, 25)
 
             for e in events:
                 xml_str = win32evtlog.EvtRender(e, win32evtlog.EvtRenderEventXml)
@@ -364,7 +555,6 @@ class LogMonitor:
                 rec_str = rec_id.text if rec_id is not None else str(int(time.time()))
 
                 event_key = f"WIN-SEC-{rec_str}"
-                # Check duplicate
                 if any(x.get("id") == event_key for x in self.security_logs):
                     continue
 
@@ -378,6 +568,7 @@ class LogMonitor:
 
                 sec_item = {
                     "id": event_key,
+                    "event_id": eid,
                     "timestamp": time_created,
                     "category": "AUDIT",
                     "severity": "INFO",
@@ -386,122 +577,258 @@ class LogMonitor:
                     "source_ip": data_dict.get("IpAddress", "127.0.0.1"),
                     "user": data_dict.get("TargetUserName") or data_dict.get("SubjectUserName") or "SYSTEM",
                     "action": f"EVENT_{eid}",
-                    "geo": geo_service.lookup(data_dict.get("IpAddress", "127.0.0.1"))
+                    "message": json.dumps(data_dict)
                 }
 
-                if eid == "4688":
-                    sec_item["category"] = "PROCESS"
-                    sec_item["title"] = "New Process Created"
-                    proc = data_dict.get("NewProcessName", "Unknown")
-                    sec_item["description"] = f"Created: {proc} by {data_dict.get('SubjectUserName', 'SYSTEM')}"
-                elif eid == "4672":
-                    sec_item["category"] = "PRIVILEGE"
-                    sec_item["severity"] = "MEDIUM"
-                    sec_item["title"] = "Special Privileges Assigned to Logon"
-                    sec_item["description"] = f"Administrator privileges granted to {sec_item['user']}"
-                elif eid == "4720":
-                    sec_item["category"] = "ACCOUNT"
-                    sec_item["severity"] = "HIGH"
-                    sec_item["title"] = "User Account Created"
-                    sec_item["description"] = f"New user account {data_dict.get('TargetUserName')} was provisioned."
-                elif eid == "5157":
-                    sec_item["category"] = "FIREWALL"
-                    sec_item["severity"] = "HIGH"
-                    sec_item["title"] = "Windows Filtering Platform Blocked Connection"
-                    sec_item["description"] = f"WFP dropped packet to {data_dict.get('DestAddress')}:{data_dict.get('DestPort')}"
+                # Run through the Threat Detector
+                detected_threat = log_threat_detector.analyze_event(sec_item, os_type="windows")
+                if detected_threat:
+                    new_events.append(detected_threat)
+                else:
+                    if eid == "4688":
+                        sec_item["category"] = "PROCESS"
+                        sec_item["title"] = "New Process Created"
+                        proc = data_dict.get("NewProcessName", "Unknown")
+                        sec_item["description"] = f"Created: {proc} by {sec_item['user']}"
+                    elif eid == "4672":
+                        sec_item["category"] = "PRIVILEGE"
+                        sec_item["severity"] = "MEDIUM"
+                        sec_item["title"] = "Special Privileges Assigned to Logon"
+                        sec_item["description"] = f"Administrator privileges granted to {sec_item['user']}"
+                    elif eid == "4720":
+                        sec_item["category"] = "ACCOUNT"
+                        sec_item["severity"] = "HIGH"
+                        sec_item["title"] = "User Account Created"
+                        sec_item["description"] = f"New user account {data_dict.get('TargetUserName')} was provisioned."
+                    elif eid == "5157":
+                        sec_item["category"] = "FIREWALL"
+                        sec_item["severity"] = "HIGH"
+                        sec_item["title"] = "Windows Filtering Platform Blocked Connection"
+                        sec_item["description"] = f"WFP dropped packet to {data_dict.get('DestAddress')}:{data_dict.get('DestPort')}"
 
-                new_events.append(sec_item)
-
-            if new_events:
-                with self.lock:
-                    for item in reversed(new_events):
-                        self.security_logs.insert(0, item)
-                    self.security_logs = self.security_logs[:MAX_LOG_EVENTS]
-                self._save_persisted_logs()
-        except Exception as e:
-            # Elevation not held, handled gracefully
+                    new_events.append(sec_item)
+        except Exception:
             pass
 
+        # 2. Windows Defender Operational Channel (Malware detections, tampering, configuration)
+        try:
+            q_def = win32evtlog.EvtQuery("Microsoft-Windows-Windows Defender/Operational", win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryReverseDirection, "*[System[(EventID=1116 or EventID=1117 or EventID=5001 or EventID=5004 or EventID=5007)]]")
+            def_events = win32evtlog.EvtNext(q_def, 15)
+            for e in def_events:
+                xml_str = win32evtlog.EvtRender(e, win32evtlog.EvtRenderEventXml)
+                root = ET.fromstring(xml_str)
+                eid = root.find('.//ns:EventID', ns).text
+                time_created = root.find('.//ns:TimeCreated', ns).attrib.get('SystemTime', '')
+                rec_id = root.find('.//ns:EventRecordID', ns)
+                rec_str = rec_id.text if rec_id is not None else str(int(time.time()))
+
+                event_key = f"WIN-DEF-{rec_str}"
+                if any(x.get("id") == event_key for x in self.security_logs):
+                    continue
+
+                event_data = root.find('.//ns:EventData', ns)
+                data_dict = {}
+                if event_data is not None:
+                    for d in event_data.findall('ns:Data', ns):
+                        name = d.attrib.get('Name')
+                        if name:
+                            data_dict[name] = d.text
+
+                threat_name = data_dict.get("Threat Name") or data_dict.get("Product Name") or f"Defender Event {eid}"
+                sev = "CRITICAL" if eid in ("1116", "5001") else ("HIGH" if eid == "1117" else "INFO")
+                cat = "MALWARE" if eid in ("1116", "1117") else "DEFENSE_EVASION"
+
+                def_item = {
+                    "id": event_key,
+                    "event_id": eid,
+                    "timestamp": time_created,
+                    "category": cat,
+                    "severity": sev,
+                    "title": f"Defender: {threat_name}",
+                    "description": f"Windows Defender Event {eid}: {threat_name}",
+                    "source_ip": "127.0.0.1",
+                    "user": "SYSTEM",
+                    "action": f"DEFENDER_{eid}",
+                    "message": json.dumps(data_dict)
+                }
+                new_events.append(def_item)
+        except Exception:
+            pass
+
+        # 3. System Security Events (Service Installations Event 7045 & Audit Cleared Event 104)
+        try:
+            q_sys = win32evtlog.EvtQuery("System", win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryReverseDirection, "*[System[(EventID=7045 or EventID=104)]]")
+            sys_events = win32evtlog.EvtNext(q_sys, 15)
+            for e in sys_events:
+                xml_str = win32evtlog.EvtRender(e, win32evtlog.EvtRenderEventXml)
+                root = ET.fromstring(xml_str)
+                eid = root.find('.//ns:EventID', ns).text
+                time_created = root.find('.//ns:TimeCreated', ns).attrib.get('SystemTime', '')
+                rec_id = root.find('.//ns:EventRecordID', ns)
+                rec_str = rec_id.text if rec_id is not None else str(int(time.time()))
+
+                event_key = f"WIN-SYSSEC-{rec_str}"
+                if any(x.get("id") == event_key for x in self.security_logs):
+                    continue
+
+                event_data = root.find('.//ns:EventData', ns)
+                data_dict = {}
+                if event_data is not None:
+                    for d in event_data.findall('ns:Data', ns):
+                        name = d.attrib.get('Name')
+                        if name:
+                            data_dict[name] = d.text
+
+                if eid == "7045":
+                    svc_name = data_dict.get("ServiceName", "Unknown Service")
+                    img_path = data_dict.get("ImagePath", "Unknown")
+                    acct = data_dict.get("AccountName", "SYSTEM")
+                    sys_item = {
+                        "id": event_key,
+                        "event_id": "7045",
+                        "timestamp": time_created,
+                        "category": "PERSISTENCE",
+                        "severity": "MEDIUM",
+                        "title": f"Service Installed: {svc_name}",
+                        "description": f"Binary: {img_path} (Account: {acct})",
+                        "source_ip": "127.0.0.1",
+                        "user": acct,
+                        "action": "SERVICE_INSTALLED",
+                        "message": json.dumps(data_dict)
+                    }
+                    new_events.append(sys_item)
+                elif eid == "104":
+                    sys_item = {
+                        "id": event_key,
+                        "event_id": "104",
+                        "timestamp": time_created,
+                        "category": "DEFENSE_EVASION",
+                        "severity": "HIGH",
+                        "title": "System Audit Log Cleared",
+                        "description": "The event log was cleared by an administrator or intruder.",
+                        "source_ip": "127.0.0.1",
+                        "user": "SYSTEM",
+                        "action": "LOG_CLEARED",
+                        "message": json.dumps(data_dict)
+                    }
+                    new_events.append(sys_item)
+        except Exception:
+            pass
+
+        # 4. PowerShell Operational Channel (ScriptBlock Logging - Event 4104)
+        try:
+            q_ps = win32evtlog.EvtQuery("Microsoft-Windows-PowerShell/Operational", win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryReverseDirection, "*[System[(EventID=4104)]]")
+            ps_events = win32evtlog.EvtNext(q_ps, 15)
+            for e in ps_events:
+                xml_str = win32evtlog.EvtRender(e, win32evtlog.EvtRenderEventXml)
+                root = ET.fromstring(xml_str)
+                time_created = root.find('.//ns:TimeCreated', ns).attrib.get('SystemTime', '')
+                rec_id = root.find('.//ns:EventRecordID', ns)
+                rec_str = rec_id.text if rec_id is not None else str(int(time.time()))
+
+                event_key = f"WIN-PS-{rec_str}"
+                if any(x.get("id") == event_key for x in self.security_logs):
+                    continue
+
+                event_data = root.find('.//ns:EventData', ns)
+                data_dict = {}
+                if event_data is not None:
+                    for d in event_data.findall('ns:Data', ns):
+                        name = d.attrib.get('Name')
+                        if name:
+                            data_dict[name] = d.text
+
+                script_text = data_dict.get("ScriptBlockText", "")
+                # Only log if suspicious or threat detected
+                ps_item = {
+                    "id": event_key,
+                    "event_id": "4104",
+                    "timestamp": time_created,
+                    "category": "EXECUTION",
+                    "severity": "INFO",
+                    "title": "PowerShell ScriptBlock Executed",
+                    "description": script_text[:120].strip() or "ScriptBlock executed",
+                    "source_ip": "127.0.0.1",
+                    "user": "SYSTEM",
+                    "action": "POWERSHELL_SCRIPT",
+                    "message": script_text
+                }
+                threat = log_threat_detector.analyze_event(ps_item, os_type="windows")
+                if threat:
+                    new_events.append(threat)
+        except Exception:
+            pass
+
+        if new_events:
+            with self.lock:
+                for item in reversed(new_events):
+                    self.security_logs.insert(0, item)
+                self.security_logs = self.security_logs[:MAX_LOG_EVENTS]
+            self._save_persisted_logs()
+
     def _harvest_linux_security_logs(self):
-        """Discovers security incidents from Linux auth logs or journalctl."""
+        """Discovers security incidents from Linux auth logs, journalctl, and systemd units."""
         if not self.is_linux:
             return
 
         new_events = []
-        # 1. Try journalctl for sudo, sshd, ufw, audit
+        # 1. Query journalctl specifically for security units
         try:
-            cmd = ["journalctl", "-n", "30", "-o", "json", "--no-pager"]
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.5)
+            cmd = ["journalctl", "-n", "80", "-o", "json", "--no-pager", "-u", "ssh", "-u", "sshd", "-u", "sudo", "-u", "systemd-logind", "-u", "polkit"]
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3.5)
             if proc.returncode == 0 and proc.stdout:
                 for line in proc.stdout.splitlines():
                     if not line.strip():
                         continue
                     try:
                         item = json.loads(line)
-                        msg = item.get("MESSAGE", "")
-                        comm = item.get("_COMM", "")
-                        usec = int(item.get("__REALTIME_TIMESTAMP", time.time() * 1000000))
+                        msg = decode_log_value(item.get("MESSAGE"))
+                        comm = decode_log_value(item.get("_COMM") or item.get("SYSLOG_IDENTIFIER") or "system")
+                        usec = int(item.get("__REALTIME_TIMESTAMP") or (time.time() * 1000000))
                         event_key = f"LNX-SEC-{usec}"
                         if any(x.get("id") == event_key for x in self.security_logs):
                             continue
 
-                        # Sudo Privilege Changes
-                        if comm == "sudo" or "COMMAND=" in msg:
-                            new_events.append({
-                                "id": event_key,
-                                "timestamp": datetime.datetime.fromtimestamp(usec / 1000000.0).isoformat(),
-                                "category": "PRIVILEGE",
-                                "severity": "MEDIUM",
-                                "title": "Elevated sudo Command Executed",
-                                "description": msg[:200],
-                                "source_ip": "127.0.0.1",
-                                "user": item.get("_AUDIT_LOGINUID") or "root",
-                                "action": "SUDO_EXECUTION",
-                                "geo": geo_service.host_location
-                            })
-                        # SSH Security Anomalies
-                        elif comm == "sshd" or "sshd[" in msg:
-                            if "Failed password" in msg:
-                                new_events.append({
-                                    "id": event_key,
-                                    "timestamp": datetime.datetime.fromtimestamp(usec / 1000000.0).isoformat(),
-                                    "category": "AUTHENTICATION",
-                                    "severity": "HIGH",
-                                    "title": "SSH Authentication Failure",
-                                    "description": msg[:200],
-                                    "source_ip": "127.0.0.1",
-                                    "user": "sshd",
-                                    "action": "SSH_AUTH_FAIL",
-                                    "geo": geo_service.host_location
-                                })
+                        raw_event = {
+                            "id": event_key,
+                            "timestamp": datetime.datetime.fromtimestamp(usec / 1000000.0).isoformat(),
+                            "source": comm,
+                            "message": msg,
+                            "user": item.get("_AUDIT_LOGINUID") or "root"
+                        }
+
+                        # Feed into LogThreatDetector
+                        threat = log_threat_detector.analyze_event(raw_event, os_type="linux")
+                        if threat:
+                            new_events.append(threat)
                     except Exception:
                         continue
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Linux security journalctl error: {e}")
 
-        # 2. Check /var/log/auth.log or /var/log/secure if readable
-        for auth_file in ("/var/log/auth.log", "/var/log/secure"):
-            if os.path.exists(auth_file):
+        # 2. Check /var/log/auth.log, /var/log/secure, and /var/log/audit/audit.log
+        for auth_file in ("/var/log/auth.log", "/var/log/secure", "/var/log/audit/audit.log"):
+            if os.path.exists(auth_file) and os.access(auth_file, os.R_OK):
                 try:
                     with open(auth_file, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = deque(f, maxlen=30)
+                        lines = deque(f, maxlen=60)
                     for line in lines:
-                        if "Failed password" in line or "sudo:" in line or "authentication failure" in line:
-                            event_key = f"LNX-AUTH-{hash(line.strip())}"
-                            if any(x.get("id") == event_key for x in self.security_logs):
-                                continue
-                            new_events.append({
-                                "id": event_key,
-                                "timestamp": datetime.datetime.now().isoformat(),
-                                "category": "AUTHENTICATION" if "password" in line else "PRIVILEGE",
-                                "severity": "HIGH" if "Failed" in line else "MEDIUM",
-                                "title": "Linux Auth / Privilege Event",
-                                "description": line.strip()[:200],
-                                "source_ip": "127.0.0.1",
-                                "user": "linux-user",
-                                "action": "LINUX_AUTH_EVENT",
-                                "geo": geo_service.host_location
-                            })
+                        l_clean = line.strip()
+                        if not l_clean:
+                            continue
+                        event_key = f"LNX-AUTH-{hash(l_clean)}"
+                        if any(x.get("id") == event_key for x in self.security_logs):
+                            continue
+
+                        raw_event = {
+                            "id": event_key,
+                            "timestamp": datetime.datetime.now().isoformat(),
+                            "source": "auth-log",
+                            "message": l_clean
+                        }
+                        threat = log_threat_detector.analyze_event(raw_event, os_type="linux")
+                        if threat:
+                            new_events.append(threat)
                 except Exception:
                     pass
 
@@ -533,16 +860,16 @@ class LogMonitor:
             s_lower = search.lower()
             attempts = [
                 a for a in attempts
-                if s_lower in a.get("username", "").lower()
-                or s_lower in a.get("source_ip", "").lower()
-                or s_lower in a.get("logon_type", "").lower()
-                or s_lower in a.get("failure_reason", "").lower()
+                if s_lower in str(a.get("username", "")).lower()
+                or s_lower in str(a.get("source_ip", "")).lower()
+                or s_lower in str(a.get("logon_type", "")).lower()
+                or s_lower in str(a.get("failure_reason", "")).lower()
             ]
 
         return attempts[:limit]
 
     def record_login_attempt(self, username: str, status: str, logon_type: str = "Interactive", source_ip: str = "127.0.0.1", failure_reason: str = "") -> Dict[str, Any]:
-        """Records a new authentication attempt with automated brute-force threat calculation."""
+        """Records a real authentication attempt and evaluates brute-force threat scoring."""
         status = status.upper()
         if status not in ("SUCCESS", "FAILED", "LOGOFF", "DISCONNECTED"):
             status = "INFO"
@@ -567,33 +894,23 @@ class LogMonitor:
             if len(self.login_attempts) > MAX_LOG_EVENTS:
                 self.login_attempts = self.login_attempts[:MAX_LOG_EVENTS]
 
-        # Check for Brute-Force condition (3+ failed attempts in 5 minutes from same IP or user)
+        # Feed to Log Threat Detector if failed
         if status == "FAILED":
-            recent_fails = [
-                a for a in self.login_attempts[:20]
-                if a.get("status") == "FAILED"
-                and (a.get("source_ip") == source_ip or a.get("username") == username)
-            ]
-            if len(recent_fails) >= 3:
-                # Trigger a Security Incident alert
-                self.add_security_event({
-                    "id": f"ALERT-BRUTEFORCE-{int(time.time())}",
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "category": "AUTHENTICATION",
-                    "severity": "CRITICAL",
-                    "title": "Brute-Force Authentication Anomaly Detected",
-                    "description": f"Multiple failed login attempts ({len(recent_fails)}) detected against user '{username}' from IP {source_ip}.",
-                    "source_ip": source_ip,
-                    "user": username,
-                    "action": "BRUTE_FORCE_SUSPECTED",
-                    "geo": geo
-                })
+            raw_event = {
+                "message": f"Authentication failed for user {username} from {source_ip}: {failure_reason}",
+                "source": "LogonAuth",
+                "user": username,
+                "source_ip": source_ip
+            }
+            threat = log_threat_detector.analyze_event(raw_event)
+            if threat:
+                self.add_security_event(threat)
 
         self._save_persisted_logs()
         return record
 
     def _harvest_os_logins(self):
-        """Discovers historical logon records from Windows TerminalServices & Security channels or Linux."""
+        """Harvests authentications from Windows TerminalServices & Security or Linux."""
         if self.is_linux:
             self._harvest_linux_logins()
             return
@@ -604,7 +921,7 @@ class LogMonitor:
         import win32evtlog
         import xml.etree.ElementTree as ET
 
-        # 1. Harvest from Microsoft-Windows-TerminalServices-LocalSessionManager/Operational
+        # 1. Harvest from TerminalServices
         try:
             query = "*[System[(EventID=21 or EventID=22 or EventID=23 or EventID=24 or EventID=25)]]"
             q = win32evtlog.EvtQuery("Microsoft-Windows-TerminalServices-LocalSessionManager/Operational", win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryReverseDirection, query)
@@ -676,15 +993,14 @@ class LogMonitor:
                     self.login_attempts = self.login_attempts[:MAX_LOG_EVENTS]
                 self._save_persisted_logs()
         except Exception as e:
-            logger.debug(f"TerminalServices session harvest error: {e}")
+            logger.debug(f"TerminalServices harvest error: {e}")
 
-        # 2. Harvest from Windows Security Channel (if running as Administrator)
+        # 2. Harvest from Windows Security Channel (Events 4624 & 4625)
         if self.system_info.get("is_admin", False):
             try:
-                # Query 4624 (Logon) and 4625 (Failed Logon)
                 query = "*[System[(EventID=4624 or EventID=4625)]]"
                 q = win32evtlog.EvtQuery("Security", win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryReverseDirection, query)
-                events = win32evtlog.EvtNext(q, 20)
+                events = win32evtlog.EvtNext(q, 25)
                 
                 ns = {'ns': 'http://schemas.microsoft.com/win/2004/08/events/event'}
                 new_sec_logins = []
@@ -710,7 +1026,6 @@ class LogMonitor:
                                 d[name] = item.text
 
                     u_str = d.get("TargetUserName") or d.get("SubjectUserName") or "Unknown"
-                    # Filter internal machine accounts like DESKTOP$
                     if u_str.endswith("$"):
                         continue
 
@@ -771,14 +1086,15 @@ class LogMonitor:
                 logger.debug(f"Windows Security logon read error: {ex}")
 
     def _harvest_linux_logins(self):
-        """Harvests logins on Linux from last, lastb, and auth.log."""
+        """Harvests authentications on Linux from last, lastb, journalctl, and auth logs."""
         if not self.is_linux:
             return
 
         new_logins = []
+
         # 1. Successful logins via `last -n 30`
         try:
-            proc = subprocess.run(["last", "-n", "30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.0)
+            proc = subprocess.run(["last", "-n", "30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.5)
             if proc.returncode == 0 and proc.stdout:
                 for line in proc.stdout.splitlines():
                     parts = line.split()
@@ -808,9 +1124,9 @@ class LogMonitor:
         except Exception:
             pass
 
-        # 2. Failed logins via `lastb -n 30` (requires root/sudo or readable btmp)
+        # 2. Failed logins via `lastb -n 30`
         try:
-            proc = subprocess.run(["lastb", "-n", "30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.0)
+            proc = subprocess.run(["lastb", "-n", "30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.5)
             if proc.returncode == 0 and proc.stdout:
                 for line in proc.stdout.splitlines():
                     parts = line.split()
@@ -830,12 +1146,65 @@ class LogMonitor:
                             "timestamp": datetime.datetime.now().isoformat(),
                             "username": user,
                             "status": "FAILED",
-                            "logon_type": "Remote SSH (Port 22)" if "pts" in terminal or is_remote else "Console",
+                            "logon_type": "Remote SSH" if "pts" in terminal or is_remote else "Console",
                             "source_ip": ip_or_host if is_remote else "LOCAL",
-                            "failure_reason": "Bad Password / Invalid Credentials (lastb)",
+                            "failure_reason": "Invalid Credentials (lastb)",
                             "geo": geo,
                             "severity": "HIGH"
                         })
+        except Exception:
+            pass
+
+        # 3. Journalctl SSH and PAM login harvest
+        try:
+            cmd = ["journalctl", "-u", "ssh", "-u", "sshd", "-u", "systemd-logind", "-n", "50", "-o", "json", "--no-pager"]
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3.0)
+            if proc.returncode == 0 and proc.stdout:
+                for line in proc.stdout.splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        item = json.loads(line)
+                        msg = decode_log_value(item.get("MESSAGE"))
+                        usec = int(item.get("__REALTIME_TIMESTAMP") or (time.time() * 1000000))
+                        event_key = f"LNX-JNL-AUTH-{usec}"
+                        if any(x.get("id") == event_key for x in self.login_attempts):
+                            continue
+
+                        # Check Accepted / Failed
+                        m_acc = re.search(r"Accepted (?:password|publickey) for ([a-zA-Z0-9_\-\.]+) from ([0-9a-fA-F\.:]+)", msg)
+                        m_fail = re.search(r"Failed password for (?:invalid user )?([a-zA-Z0-9_\-\.]+) from ([0-9a-fA-F\.:]+)", msg)
+
+                        if m_acc:
+                            u = m_acc.group(1)
+                            ip = m_acc.group(2)
+                            new_logins.append({
+                                "id": event_key,
+                                "timestamp": datetime.datetime.fromtimestamp(usec / 1000000.0).isoformat(),
+                                "username": u,
+                                "status": "SUCCESS",
+                                "logon_type": "Remote SSH (Port 22)",
+                                "source_ip": ip,
+                                "failure_reason": "SSH Authentication Accepted",
+                                "geo": geo_service.lookup(ip),
+                                "severity": "INFO"
+                            })
+                        elif m_fail:
+                            u = m_fail.group(1)
+                            ip = m_fail.group(2)
+                            new_logins.append({
+                                "id": event_key,
+                                "timestamp": datetime.datetime.fromtimestamp(usec / 1000000.0).isoformat(),
+                                "username": u,
+                                "status": "FAILED",
+                                "logon_type": "Remote SSH (Port 22)",
+                                "source_ip": ip,
+                                "failure_reason": "SSH Bad Password / Credentials",
+                                "geo": geo_service.lookup(ip),
+                                "severity": "HIGH"
+                            })
+                    except Exception:
+                        continue
         except Exception:
             pass
 
@@ -865,7 +1234,6 @@ class LogMonitor:
             logger.debug(f"Failed to query active sessions: {e}")
 
         if not sessions:
-            # Fallback to current OS username
             curr_user = os.getenv("USERNAME") or os.getenv("USER") or "Operator"
             sessions.append({
                 "username": curr_user,
@@ -878,27 +1246,56 @@ class LogMonitor:
 
         return sessions
 
+    def scan_all_logs_for_threats(self) -> Dict[str, Any]:
+        """Triggers an active comprehensive threat analysis across all system and security logs."""
+        # 1. Fetch fresh system logs
+        sys_logs = self.get_system_logs(limit=200)
+
+        # 2. Harvest security channels
+        if self.is_windows and HAS_WIN32EVTLOG:
+            self._harvest_windows_security_channel()
+        elif self.is_linux:
+            self._harvest_linux_security_logs()
+
+        # 3. Harvest logins
+        self._harvest_os_logins()
+
+        # 4. Scan all records with LogThreatDetector
+        os_mode = "windows" if self.is_windows else "linux"
+        new_threats = log_threat_detector.scan_log_batch(sys_logs, os_type=os_mode)
+        for t in new_threats:
+            self.add_security_event(t)
+
+        all_threats = log_threat_detector.get_detected_threats(limit=50)
+        stats = self.get_summary_stats()
+
+        return {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "os": self.system_info.get("os"),
+            "scanned_system_events": len(sys_logs),
+            "threats_discovered_now": len(new_threats),
+            "total_active_threats": len(all_threats),
+            "threats": all_threats,
+            "stats": stats
+        }
+
     def get_summary_stats(self) -> Dict[str, Any]:
         """Calculates fast real-time KPI counts across system, security, and authentication."""
-        # Count system log errors/warnings from recent snapshot
         sys_logs = self.system_logs_cache or []
         err_count = sum(1 for e in sys_logs if e.get("level") in ("ERROR", "CRITICAL"))
         warn_count = sum(1 for e in sys_logs if e.get("level") == "WARNING")
 
-        # Count security incidents
         with self.lock:
             sec_incidents = sum(1 for s in self.security_logs if s.get("severity") in ("HIGH", "CRITICAL"))
-            
-            # 24H Login counts
             total_logins = len(self.login_attempts)
             failed_logins = sum(1 for a in self.login_attempts if a.get("status") == "FAILED")
             successful_logins = sum(1 for a in self.login_attempts if a.get("status") == "SUCCESS")
 
         active_sessions = len(self.get_active_sessions())
 
-        # Brute force threat assessment
+        # Brute-force risk calculation
         brute_force_active = any(
-            s.get("action") == "BRUTE_FORCE_SUSPECTED" for s in self.security_logs[:10]
+            s.get("action") in ("BRUTE_FORCE_SUSPECTED", "SSH_BRUTE_FORCE", "SUDO_BRUTE_FORCE") for s in self.security_logs[:15]
         ) or (failed_logins >= 3)
 
         return {
@@ -911,6 +1308,7 @@ class LogMonitor:
             "active_sessions": active_sessions,
             "brute_force_risk": "HIGH_ALERT" if brute_force_active else ("ELEVATED" if failed_logins > 0 else "NORMAL")
         }
+
 
 # Global singleton instance
 log_monitor = LogMonitor()

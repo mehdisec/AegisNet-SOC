@@ -525,8 +525,8 @@
           </div>
         </div>
         <div class="flex items-center space-x-2">
-          <button id="secInjectModalBtn" class="flex items-center px-3 py-1.5 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition">
-            <i data-lucide="plus-circle" class="w-3.5 h-3.5 mr-1.5"></i> Simulate Security Incident
+          <button id="scanThreatsBtn" class="flex items-center px-3 py-1.5 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-mono text-xs font-bold transition">
+            <i data-lucide="shield-alert" class="w-3.5 h-3.5 mr-1.5 text-rose-400"></i> Scan Logs for Threats
           </button>
           <button id="secLogRefreshBtn" class="flex items-center px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
             <i data-lucide="refresh-cw" class="w-3 h-3 mr-1 text-cyan-400"></i> Refresh
@@ -628,18 +628,19 @@
           </div>
         </div>
 
-        <!-- Quick Simulate Login Box -->
-        <div class="cyber-card rounded-lg p-3.5 space-y-2.5 border border-slate-800 flex flex-col justify-between">
+        <!-- Log Threat Detection Radar -->
+        <div class="cyber-card rounded-lg p-3.5 space-y-2.5 border border-cyan-500/30 flex flex-col justify-between">
           <div>
             <div class="flex items-center justify-between text-xs font-mono font-bold text-slate-300 pb-2 border-b border-slate-800">
-              <span class="flex items-center"><i data-lucide="test-tube-2" class="w-4 h-4 text-cyan-400 mr-1.5"></i> AUTH INCIDENT TESTER</span>
+              <span class="flex items-center"><i data-lucide="shield-check" class="w-4 h-4 text-cyan-400 mr-1.5"></i> LOG THREAT DETECTION RADAR</span>
+              <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono">ACTIVE ENGINE</span>
             </div>
-            <p class="text-[11px] text-slate-400 font-mono mt-2">
-              Inject simulated failed logons or brute-force credential sprays to test SOC incident detection and firewall triggers.
+            <p class="text-[11px] text-slate-400 font-mono mt-2 leading-relaxed">
+              Real-time heuristic & signature analysis inspecting SSH brute-force, Sudo abuse, Windows Event Logs, and Linux journalctl for attacks.
             </p>
           </div>
-          <button id="openSimulateLoginBtn" class="w-full flex items-center justify-center px-3 py-2 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold transition">
-            <i data-lucide="shield-alert" class="w-3.5 h-3.5 mr-1.5"></i> Simulate Authentication Attempt
+          <button id="authScanThreatsBtn" class="w-full flex items-center justify-center px-3 py-2 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-mono font-bold transition">
+            <i data-lucide="radar" class="w-3.5 h-3.5 mr-1.5 text-rose-400"></i> Scan Logs for Threats Now
           </button>
         </div>
       </div>
@@ -956,122 +957,6 @@
           Close
         </button>
       </div>
-    </div>
-  </div>
-
-  <!-- SIMULATE AUTHENTICATION ATTEMPT MODAL -->
-  <div id="simulateLoginModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="cyber-card rounded-xl max-w-md w-full border border-cyan-500/30 overflow-hidden shadow-2xl flex flex-col">
-      <div class="px-5 py-3.5 bg-cyber-800 border-b border-cyan-500/20 flex items-center justify-between">
-        <div class="flex items-center space-x-2">
-          <i data-lucide="key" class="w-4 h-4 text-emerald-400"></i>
-          <span class="font-bold text-white font-mono text-sm tracking-wide">SIMULATE AUTHENTICATION EVENT</span>
-        </div>
-        <button onclick="document.getElementById('simulateLoginModal').classList.add('hidden')" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
-          <i data-lucide="x" class="w-4 h-4"></i>
-        </button>
-      </div>
-      <form id="simulateLoginForm" class="p-5 space-y-3 font-mono text-xs">
-        <div>
-          <label class="block text-slate-400 mb-1">Target Username:</label>
-          <input id="simUser" type="text" value="admin" required class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
-        </div>
-        <div>
-          <label class="block text-slate-400 mb-1">Authentication Result:</label>
-          <select id="simStatus" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
-            <option value="FAILED">FAILED (Invalid Credentials / Bad Password)</option>
-            <option value="SUCCESS">SUCCESS (Logon Succeeded)</option>
-            <option value="LOGOFF">LOGOFF (Session Logoff)</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-slate-400 mb-1">Logon Category / Type:</label>
-          <select id="simType" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
-            <option value="Remote Desktop (RDP)">Remote Desktop (RDP - Port 3389)</option>
-            <option value="Interactive Console">Interactive Console</option>
-            <option value="Network Auth">Network Authentication (SMB/SSH)</option>
-            <option value="Web Portal">Web SOC Portal</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-slate-400 mb-1">Source IP Address:</label>
-          <input id="simIP" type="text" value="185.220.101.5" required class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
-        </div>
-        <div>
-          <label class="block text-slate-400 mb-1">Audit Failure Reason:</label>
-          <input id="simReason" type="text" value="Bad Password / Invalid Credentials" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
-        </div>
-        <div class="pt-2 flex justify-end space-x-2">
-          <button type="button" onclick="document.getElementById('simulateLoginModal').classList.add('hidden')" class="px-3 py-1.5 rounded bg-slate-800 text-slate-300">
-            Cancel
-          </button>
-          <button type="submit" class="px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition">
-            Inject Auth Event
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- INJECT SECURITY THREAT INCIDENT MODAL -->
-  <div id="injectSecurityModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="cyber-card rounded-xl max-w-md w-full border border-rose-500/40 overflow-hidden shadow-2xl flex flex-col">
-      <div class="px-5 py-3.5 bg-cyber-800 border-b border-rose-500/20 flex items-center justify-between">
-        <div class="flex items-center space-x-2">
-          <i data-lucide="shield-alert" class="w-4 h-4 text-rose-400"></i>
-          <span class="font-bold text-white font-mono text-sm tracking-wide">INJECT SECURITY INCIDENT</span>
-        </div>
-        <button onclick="document.getElementById('injectSecurityModal').classList.add('hidden')" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
-          <i data-lucide="x" class="w-4 h-4"></i>
-        </button>
-      </div>
-      <form id="injectSecurityForm" class="p-5 space-y-3 font-mono text-xs">
-        <div>
-          <label class="block text-slate-400 mb-1">Incident Category:</label>
-          <select id="injCategory" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
-            <option value="AUTHENTICATION">AUTHENTICATION (Brute Force / Password Spray)</option>
-            <option value="FIREWALL">FIREWALL (Suspicious Inbound Port Scan)</option>
-            <option value="PROCESS">PROCESS (Suspicious Execution / LOLBin)</option>
-            <option value="PRIVILEGE">PRIVILEGE (Privilege Escalation Attempt)</option>
-            <option value="AUDIT">AUDIT (Security Policy Tampering)</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-slate-400 mb-1">Threat Severity:</label>
-          <select id="injSeverity" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
-            <option value="CRITICAL">CRITICAL (Immediate containment required)</option>
-            <option value="HIGH">HIGH (Severe threat vector)</option>
-            <option value="MEDIUM">MEDIUM (Suspicious anomaly)</option>
-            <option value="INFO">INFO (Informational telemetry)</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-slate-400 mb-1">Incident Title:</label>
-          <input id="injTitle" type="text" value="Suspicious Port Sweep on RDP / SSH" required class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
-        </div>
-        <div>
-          <label class="block text-slate-400 mb-1">Incident Description:</label>
-          <textarea id="injDescription" rows="2" required class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">SYN packet threshold exceeded across ports 22, 3389, 445 from remote IP.</textarea>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div>
-            <label class="block text-slate-400 mb-1">Source IP:</label>
-            <input id="injIP" type="text" value="45.33.32.156" required class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
-          </div>
-          <div>
-            <label class="block text-slate-400 mb-1">Target Account:</label>
-            <input id="injUser" type="text" value="root" required class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-cyan-400">
-          </div>
-        </div>
-        <div class="pt-2 flex justify-end space-x-2">
-          <button type="button" onclick="document.getElementById('injectSecurityModal').classList.add('hidden')" class="px-3 py-1.5 rounded bg-slate-800 text-slate-300">
-            Cancel
-          </button>
-          <button type="submit" class="px-4 py-1.5 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold transition">
-            Register Threat Incident
-          </button>
-        </div>
-      </form>
     </div>
   </div>
 

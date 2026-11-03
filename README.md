@@ -43,16 +43,24 @@ It visualizes inbound and outbound network flows on a high-contrast dark cartogr
 - Real-time ASN, ISP, country, city, and geographic coordinate resolution (MaxMind GeoLite2 + LRU caching).
 - Calculation of live TX/RX network throughput (KB/s, Mbps) and packet rates.
 
-### 🛡️ Threat Intelligence & Reputation Scoring
+### 🛡️ Threat Intelligence & Autonomous Threat Detection
 - **Integrated Threat Engine:** Immediate classification of suspicious connections into `CLEAN`, `SUSPICIOUS`, or `MALICIOUS`.
+- **Cross-Platform Threat Detector (`log_threat_detector.py`):** Real-time automated MITRE ATT&CK signature scanning across system and security logs for Windows and Linux:
+  - SSH / RDP Brute-Force authentication attacks.
+  - Sudo privilege escalation and Polkit authorization bypass attempts.
+  - Shadow copy deletion and ransomware staging commands (`vssadmin delete shadows`).
+  - PowerShell execution policy bypass and Mimikatz memory dump detections.
+  - Kernel memory segmentation faults (`segfault`) and Out-Of-Memory (OOM) killer spikes.
+  - UFW / iptables dropped packets and Windows Filtering Platform (WFP) network blocks.
+- **Log Threat Detection Radar:** On-demand API trigger (`/api/logs/scan-threats`) and visual scanning radar in the SOC dashboard.
 - **Tor Exit Node Radar:** Real-time correlation against active Tor directory relays.
-- **Scanner & Botnet Signatures:** Automatic flagging of known scanners (Shodan, Censys, Mirai botnet C2s).
 - **Interactive Intel Modal:** Instant on-demand reputation queries for any public IP.
 
-### 📋 Live OS System Logs, Security Audit & Login Attempts
-- **System Event Logs:** Live streaming of kernel, driver, TCPIP, and service state transitions from Windows Event Log / Linux `journalctl`.
-- **Security Audit Logs:** Tracking of privileged process creations, operator interventions, and firewall policy adjustments.
-- **Authentication & Brute-Force Radar:** Live tracking of console and RDP logons (Windows Event IDs 4624/4625 & TerminalServices-LocalSessionManager). Automatic alert triggers when failed login frequency spikes.
+### 📋 Live OS System Logs, Security Audit & Login Attempts (Zero-Simulated Telemetry)
+- **100% Genuine Operating System Data:** All synthetic/simulated dummy data completely eliminated. Every event displayed originates directly from the host operating system.
+- **Multi-Source Linux Ingestion:** Robust multi-tier log harvester supporting `journalctl -o json` (with byte-array decoding), raw `journalctl`, `/var/log/syslog`, `/var/log/messages`, `dmesg -T`, and `/var/log/auth.log`.
+- **Multi-Channel Windows Security Harvest:** Comprehensive log collection spanning the `Security` channel (admin audit), `Windows Defender/Operational` (malware detection, action taken, tampering), `System` (Event 7045 service creation, Event 104 log cleared), and `PowerShell/Operational` (Event 4104 ScriptBlock logging).
+- **Authentication & Brute-Force Radar:** Live tracking of console and RDP logons (Windows Event IDs 4624/4625 & TerminalServices-LocalSessionManager; Linux `last`/`lastb`). Automatic alert triggers when failed login frequency spikes.
 
 ### ⚡ Active Incident Response & Firewall Orchestration
 - **Process Termination:** Immediate soft termination or forced kill of rogue processes.
@@ -154,9 +162,11 @@ python -m uvicorn backend.server:app --host 0.0.0.0 --port 8080
 │   ├── network_monitor.py    # Socket interceptor, protocol inference & bandwidth telemetry
 │   ├── threat_intel.py       # Threat scoring, Tor exit directory, botnet signature detector
 │   ├── log_monitor.py        # Windows Event Log & Linux journalctl system/security/auth parser
+│   ├── log_threat_detector.py # MITRE ATT&CK signature rules & heuristic log scanner
 │   ├── firewall_manager.py   # Native OS netsh & iptables rule enforcement
 │   ├── report_generator.py   # SIEM CEF format exporter & executive briefing generator
 │   └── server.py             # FastAPI REST & WebSocket streaming hub
+├── geo-arcs-map/             # Standalone reusable curved particle arcs & map package
 ├── frontend/
 │   ├── index.html            # Dark-mode SOC dashboard with tabbed telemetry panes
 │   ├── favicon.ico           # Project favicon
@@ -191,8 +201,9 @@ python -m uvicorn backend.server:app --host 0.0.0.0 --port 8080
 | `/api/intel/lookup` | `GET` | Threat reputation score (0-100), verdict, category, and signatures. |
 | `/api/intel/tor-exit-nodes` | `GET` | List of currently active Tor exit relays. |
 | `/api/logs/system` | `GET` | Stream live OS kernel and system events. |
-| `/api/logs/security` | `GET` | Stream host audit incidents and firewall drops. |
+| `/api/logs/security` | `GET` | Stream host audit incidents, Defender alerts, and firewall drops. |
 | `/api/logs/logins` | `GET` | Stream authentication attempts and active interactive user sessions. |
+| `/api/logs/scan-threats` | `POST` | On-demand MITRE ATT&CK log scanner across system and security logs. |
 | `/api/reports/siem-export` | `GET` | Download security incidents formatted in SIEM CEF (Common Event Format). |
 | `/api/actions/terminate` | `POST` | Terminate or kill socket process by PID (`{"pid": 1234}`). |
 | `/api/actions/block-ip` | `POST` | Enforce native OS firewall drop rule (`{"ip": "x.x.x.x", "reason": "..."}`). |

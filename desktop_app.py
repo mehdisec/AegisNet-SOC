@@ -159,13 +159,29 @@ def main():
         )
         api_instance.set_window(window)
 
-        # Clean, non-blocking window closing handler with 3-second shutdown animation
+        # Graceful window closing handler with 3-second cyber termination sequence
         def _perform_graceful_exit():
+            has_animated = False
             try:
-                window.evaluate_js("if (window.triggerAppShutdown) window.triggerAppShutdown();")
-            except Exception:
-                pass
-            time.sleep(3.0)
+                # Trigger DOM exit animation & audio countdown in JavaScript
+                window.evaluate_js(
+                    "if (typeof window.triggerAppShutdown === 'function') { "
+                    "  window.triggerAppShutdown(); "
+                    "} else if (document.getElementById('aegisExitOverlay')) { "
+                    "  document.getElementById('aegisExitOverlay').classList.add('active'); "
+                    "}"
+                )
+                has_animated = True
+            except Exception as e:
+                logger.warning(f"Could not trigger JS exit animation: {e}")
+                has_animated = False
+
+            if has_animated:
+                # Allow full 3.0 seconds for the cyber countdown, glitch sound and progress bar
+                time.sleep(3.0)
+            else:
+                time.sleep(0.2)
+
             try:
                 window.destroy()
             except Exception:
@@ -174,6 +190,7 @@ def main():
 
         def on_closing():
             if api_instance.is_closing:
+                # Already shutting down, allow window to close immediately
                 return True
             api_instance.is_closing = True
             logger.info("AegisNet title bar close requested. Displaying exit animation for 3.0 seconds...")
@@ -182,10 +199,19 @@ def main():
 
         window.events.closing += on_closing
 
+        # Use an isolated session data folder to prevent WebView2 0x800700AA resource-in-use collisions
+        import tempfile
+        session_cache = os.path.join(tempfile.gettempdir(), f"aegisnet_wv2_{os.getpid()}")
+        try:
+            os.makedirs(session_cache, exist_ok=True)
+        except Exception:
+            session_cache = None
+
         logger.info("Launching native hardware-accelerated GUI window...")
         webview.start(
             debug=False,
-            private_mode=False,
+            private_mode=True,
+            storage_path=session_cache,
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AegisNetDesktop/1.5"
         )
         logger.info("AegisNet desktop session terminated gracefully.")
