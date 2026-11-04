@@ -398,67 +398,87 @@ class AegisLogsManager {
     const tbody = document.getElementById('securityLogsTableBody');
     if (!tbody) return;
 
-    let filtered = this.securityLogs;
-    if (this.securityFilterSearch) {
-      const s = this.securityFilterSearch.toLowerCase();
-      filtered = filtered.filter(l => 
-        (l.title && l.title.toLowerCase().includes(s)) ||
-        (l.description && l.description.toLowerCase().includes(s)) ||
-        (l.source_ip && l.source_ip.toLowerCase().includes(s)) ||
-        (l.user && l.user.toLowerCase().includes(s))
-      );
-    }
-
-    const countElem = document.getElementById('secLogFilteredCount');
-    if (countElem) countElem.textContent = `${filtered.length} shown (of ${this.securityLogs.length})`;
-
-    if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-slate-500 font-mono text-xs">No matching security incident events found.</td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = filtered.map(log => {
-      const sev = (log.severity || 'INFO').toUpperCase();
-      let sevClass = "bg-sky-500/10 text-sky-400 border border-sky-500/30";
-      if (sev === 'CRITICAL') {
-        sevClass = "bg-rose-500/25 text-rose-300 border border-rose-500/50 cyber-glow-rose";
-      } else if (sev === 'HIGH') {
-        sevClass = "bg-rose-500/20 text-rose-400 border border-rose-500/40";
-      } else if (sev === 'MEDIUM') {
-        sevClass = "bg-amber-500/20 text-amber-300 border border-amber-500/40";
+    try {
+      let filtered = this.securityLogs || [];
+      if (this.securityFilterSearch) {
+        const s = this.securityFilterSearch.toLowerCase();
+        filtered = filtered.filter(l => 
+          (l.title && String(l.title).toLowerCase().includes(s)) ||
+          (l.description && String(l.description).toLowerCase().includes(s)) ||
+          (l.source_ip && String(l.source_ip).toLowerCase().includes(s)) ||
+          (l.user && String(l.user).toLowerCase().includes(s)) ||
+          (l.category && String(l.category).toLowerCase().includes(s))
+        );
       }
 
-      const ipStr = log.source_ip || '127.0.0.1';
-      const isRemote = (ipStr !== '127.0.0.1' && ipStr !== 'LOCAL' && !ipStr.startsWith('192.168.') && !ipStr.startsWith('10.'));
+      const countElem = document.getElementById('secLogFilteredCount');
+      if (countElem) countElem.textContent = `${filtered.length} shown (of ${(this.securityLogs || []).length})`;
 
-      return `
-        <tr class="hover:bg-slate-800/40 transition border-b border-slate-800/40 text-xs font-mono">
-          <td class="py-2.5 px-3 text-slate-400 whitespace-nowrap">${log.timestamp ? log.timestamp.replace('T', ' ').slice(0, 19) : 'N/A'}</td>
-          <td class="py-2.5 px-3">
-            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${sevClass}">${sev}</span>
-          </td>
-          <td class="py-2.5 px-3">
-            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300 border border-slate-700">${log.category || 'AUDIT'}</span>
-          </td>
-          <td class="py-2.5 px-3 font-semibold text-slate-200">
-            <div class="truncate max-w-[220px]" title="${log.title}">${log.title}</div>
-            <div class="text-[11px] text-slate-400 truncate max-w-[280px]" title="${log.description}">${log.description}</div>
-          </td>
-          <td class="py-2.5 px-3 text-cyan-300 font-mono">${log.user || 'SYSTEM'}</td>
-          <td class="py-2.5 px-3">
-            <div class="flex items-center space-x-1">
-              <span class="font-mono text-slate-300">${ipStr}</span>
-              ${isRemote ? `<button class="quick-block-btn text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 border border-rose-500/40 transition" data-ip="${ipStr}" title="Block IP">Block</button>` : ''}
-            </div>
-          </td>
-          <td class="py-2.5 px-3 text-right whitespace-nowrap">
-            <button class="view-sec-detail-btn px-2 py-1 rounded bg-slate-800 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-slate-700 text-[11px] transition" data-secid="${log.id}">
-              Inspect
-            </button>
-          </td>
-        </tr>
-      `;
-    }).join('');
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-slate-500 font-mono text-xs">No matching security incident events found.</td></tr>`;
+        return;
+      }
+
+      const escape = (val) => {
+        if (window.AegisUI && window.AegisUI.escapeHtml) {
+          return window.AegisUI.escapeHtml(String(val || ''));
+        }
+        return String(val || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      };
+
+      tbody.innerHTML = filtered.map(log => {
+        if (!log) return '';
+        const sev = String(log.severity || 'INFO').toUpperCase();
+        let sevClass = "bg-sky-500/10 text-sky-400 border border-sky-500/30";
+        if (sev === 'CRITICAL') {
+          sevClass = "bg-rose-500/25 text-rose-300 border border-rose-500/50 cyber-glow-rose";
+        } else if (sev === 'HIGH') {
+          sevClass = "bg-rose-500/20 text-rose-400 border border-rose-500/40";
+        } else if (sev === 'MEDIUM') {
+          sevClass = "bg-amber-500/20 text-amber-300 border border-amber-500/40";
+        }
+
+        const ipStr = String(log.source_ip || '127.0.0.1');
+        const isRemote = (ipStr !== '127.0.0.1' && ipStr !== 'LOCAL' && !ipStr.startsWith('192.168.') && !ipStr.startsWith('10.'));
+        const timeStr = log.timestamp ? String(log.timestamp).replace('T', ' ').slice(0, 19) : 'N/A';
+        const titleStr = escape(log.title || 'Security Audit Event');
+        const descStr = escape(log.description || '');
+        const userStr = escape(log.user || 'SYSTEM');
+        const catStr = escape(log.category || 'AUDIT');
+        const idStr = escape(log.id || '');
+
+        return `
+          <tr class="hover:bg-slate-800/40 transition border-b border-slate-800/40 text-xs font-mono">
+            <td class="py-2.5 px-3 text-slate-400 whitespace-nowrap">${timeStr}</td>
+            <td class="py-2.5 px-3">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${sevClass}">${sev}</span>
+            </td>
+            <td class="py-2.5 px-3">
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300 border border-slate-700">${catStr}</span>
+            </td>
+            <td class="py-2.5 px-3 font-semibold text-slate-200">
+              <div class="truncate max-w-[220px]" title="${titleStr}">${titleStr}</div>
+              <div class="text-[11px] text-slate-400 truncate max-w-[280px]" title="${descStr}">${descStr}</div>
+            </td>
+            <td class="py-2.5 px-3 text-cyan-300 font-mono">${userStr}</td>
+            <td class="py-2.5 px-3">
+              <div class="flex items-center space-x-1">
+                <span class="font-mono text-slate-300">${escape(ipStr)}</span>
+                ${isRemote ? `<button class="quick-block-btn text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 border border-rose-500/40 transition" data-ip="${escape(ipStr)}" title="Block IP">Block</button>` : ''}
+              </div>
+            </td>
+            <td class="py-2.5 px-3 text-right whitespace-nowrap">
+              <button class="view-sec-detail-btn px-2 py-1 rounded bg-slate-800 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-slate-700 text-[11px] transition" data-secid="${idStr}">
+                Inspect
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    } catch (renderErr) {
+      console.error("Error rendering security logs table:", renderErr);
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-rose-400 font-mono text-xs">Error rendering security audit records. Click Refresh.</td></tr>`;
+    }
 
     // Attach inspect buttons
     document.querySelectorAll('.view-sec-detail-btn').forEach(btn => {
@@ -688,7 +708,11 @@ class AegisLogsManager {
     if (badgeSysErrors) badgeSysErrors.textContent = `${stats.system_errors || 0} err / ${stats.system_warnings || 0} warn`;
 
     const badgeSecIncidents = document.getElementById('kpiSecIncidents');
-    if (badgeSecIncidents) badgeSecIncidents.textContent = stats.security_incidents || 0;
+    if (badgeSecIncidents) {
+      const activeThreats = stats.security_incidents || 0;
+      const totalAudits = (stats.security_total !== undefined) ? stats.security_total : (this.securityLogs ? this.securityLogs.length : 0);
+      badgeSecIncidents.textContent = activeThreats > 0 ? activeThreats : totalAudits;
+    }
 
     const badgeLogins = document.getElementById('kpiLoginsTotal');
     if (badgeLogins) badgeLogins.textContent = `${stats.total_logins_24h || 0} (${stats.failed_logins_24h || 0} failed)`;
@@ -698,7 +722,10 @@ class AegisLogsManager {
     if (navSys) navSys.textContent = (stats.system_errors || 0) + (stats.system_warnings || 0);
 
     const navSec = document.getElementById('navHeaderSecCount');
-    if (navSec) navSec.textContent = stats.security_incidents || 0;
+    if (navSec) {
+      const totalAudits = (stats.security_total !== undefined) ? stats.security_total : (this.securityLogs ? this.securityLogs.length : 0);
+      navSec.textContent = totalAudits;
+    }
 
     const navLogins = document.getElementById('navHeaderLoginsCount');
     if (navLogins) navLogins.textContent = stats.total_logins_24h || 0;

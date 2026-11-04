@@ -487,9 +487,17 @@ class LogMonitor:
         with self.lock:
             logs = list(self.security_logs)
 
-        # Apply Filters
+        # Apply Filters with category normalization
         if category and category != "ALL":
-            logs = [l for l in logs if l.get("category", "").upper() == category.upper()]
+            cat_norm = category.upper()
+            if cat_norm in ("AUTHENTICATION", "AUTH"):
+                logs = [l for l in logs if l.get("category", "").upper() in ("AUTHENTICATION", "AUTH")]
+            elif cat_norm in ("DEFENSE_EVASION", "EVASION"):
+                logs = [l for l in logs if l.get("category", "").upper() in ("DEFENSE_EVASION", "EVASION")]
+            elif cat_norm in ("PERSISTENCE", "PERSIST"):
+                logs = [l for l in logs if l.get("category", "").upper() in ("PERSISTENCE", "PERSIST")]
+            else:
+                logs = [l for l in logs if l.get("category", "").upper() == cat_norm]
 
         if severity and severity != "ALL":
             logs = [l for l in logs if l.get("severity", "").upper() == severity.upper()]
@@ -766,15 +774,149 @@ class LogMonitor:
                 self.security_logs = self.security_logs[:MAX_LOG_EVENTS]
             self._save_persisted_logs()
 
+    def _parse_linux_security_audit(self, raw_event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Parses legitimate Linux security/privilege/audit events into structured audit records."""
+        comm = str(raw_event.get("source") or "").lower()
+        msg = str(raw_event.get("message") or "")
+        msg_lower = msg.lower()
+        user = str(raw_event.get("user") or "root")
+        timestamp = raw_event.get("timestamp") or datetime.datetime.now().isoformat()
+        event_key = raw_event.get("id") or f"LNX-AUDIT-{int(time.time()*1000)}"
+
+        # 1. Sudo execution & session
+        if "sudo" in comm or "sudo:" in msg_lower:
+            cmd_match = re.search(r"COMMAND=([^\n;]+)", msg)
+            user_match = re.search(r"user (\w+)", msg_lower) or re.search(r"(\w+)\s*:\s*TTY", msg)
+            if user_match:
+                user = user_match.group(1)
+            cmd_str = cmd_match.group(1).strip() if cmd_match else "Privileged Command"
+            return {
+                "id": event_key,
+                "event_id": "SUDO_EXEC",
+                "timestamp": timestamp,
+                "category": "PRIVILEGE",
+                "severity": "INFO",
+                "title": f"Sudo Command: {cmd_str[:40]}",
+                "description": f"User '{user}' executed privileged command via sudo: {msg[:160]}",
+                "source_ip": "127.0.0.1",
+                "user": user,
+                "action": "SUDO_EXECUTION",
+                "message": msg
+            }
+
+        # 2. Polkit authorization
+        if "polkit" in comm or "polkit" in msg_lower:
+            return {
+                "id": event_key,
+                "event_id": "POLKIT_AUTH",
+                "timestamp": timestamp,
+                "category": "PRIVILEGE",
+                "severity": "INFO",
+                "title": "PolicyKit Privilege Authorization",
+                "description": msg[:180],
+                "source_ip": "127.0.0.1",
+                "user": user,
+                "action": "POLKIT_ACTION",
+                "message": msg
+            }
+
+        # 3. systemd-logind session lifecycle
+        if "systemd-logind" in comm or "systemd-logind" in msg_lower:
+            m_user = re.search(r"user (\w+)", msg_lower)
+            if m_user:
+                user = m_user.group(1)
+            return {
+                "id": event_key,
+                "event_id": "SESSION_AUDIT",
+                "timestamp": timestamp,
+                "category": "AUDIT",
+                "severity": "INFO",
+                "title": f"User Session Audit: {user}",
+                "description": msg[:180],
+                "source_ip": "LOCAL",
+                "user": user,
+                "action": "SESSION_LIFECYCLE",
+                "message": msg
+            }
+
+        # 4. SSH activity
+        if "ssh" in comm or "sshd" in msg_lower:
+            m_ip = re.search(r"from ([\d\.]+|[a-fA-F0-9:]+)", msg)
+            src_ip = m_ip.group(1) if m_ip else "127.0.0.1"
+            m_user = re.search(r"for (?:invalid user )?(\w+)", msg_lower)
+            if m_user:
+                user = m_user.group(1)
+            return {
+                "id": event_key,
+                "event_id": "SSH_AUDIT",
+                "timestamp": timestamp,
+                "category": "AUTHENTICATION",
+                "severity": "INFO",
+                "title": f"SSH Connection Activity: {user}",
+                "description": msg[:180],
+                "source_ip": src_ip,
+                "user": user,
+                "action": "SSH_SESSION",
+                "message": msg
+            }
+
+        # 5. Generic auth line (PAM / su / pkexec / auditd)
+        if any(k in msg_lower for k in ("pam_unix", "session opened", "session closed", "authentication", "audit(")):
+            return {
+                "id": event_key,
+                "event_id": "HOST_AUDIT",
+                "timestamp": timestamp,
+                "category": "AUDIT",
+                "severity": "INFO",
+                "title": f"Security Audit: {comm or 'System'}",
+                "description": msg[:180],
+                "source_ip": "127.0.0.1",
+                "user": user,
+                "action": "AUDIT_RECORD",
+                "message": msg
+            }
+
+        return None
+
+    def _parse_linux_audit_line(self, line: str, event_key: str) -> Optional[Dict[str, Any]]:
+        """Parses a syslog/auth.log line into a structured security event."""
+        # Syslog format: Mon DD HH:MM:SS host daemon[pid]: message
+        m = re.match(r"^([A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+([^\s]+)\s+([^:]+):\s*(.*)$", line)
+        if m:
+            daemon = m.group(3).strip()
+            msg = m.group(4).strip()
+        else:
+            daemon = "auth"
+            msg = line
+
+        raw_event = {
+            "id": event_key,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "source": daemon,
+            "message": msg,
+            "user": "root"
+        }
+        return self._parse_linux_security_audit(raw_event)
+
     def _harvest_linux_security_logs(self):
-        """Discovers security incidents from Linux auth logs, journalctl, and systemd units."""
+        """
+        Discovers genuine security audit events and threats across multiple Linux sources:
+        1. systemd journalctl JSON output for security units (sudo, polkit, sshd, systemd-logind)
+        2. systemd journalctl plain text fallback
+        3. /var/log/auth.log, /var/log/secure, and /var/log/audit/audit.log
+        4. /var/log/syslog & /var/log/messages security grep
+        5. Correlation with system_logs_cache for kernel security / UFW / firewall drops
+        """
         if not self.is_linux:
             return
 
         new_events = []
-        # 1. Query journalctl specifically for security units
+
+        # ---------------------------------------------------------------------
+        # Source 1: journalctl JSON for security units
+        # ---------------------------------------------------------------------
         try:
-            cmd = ["journalctl", "-n", "80", "-o", "json", "--no-pager", "-u", "ssh", "-u", "sshd", "-u", "sudo", "-u", "systemd-logind", "-u", "polkit"]
+            cmd = ["journalctl", "-n", "100", "-o", "json", "--no-pager", "-u", "ssh", "-u", "sshd", "-u", "sudo", "-u", "systemd-logind", "-u", "polkit"]
             proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3.5)
             if proc.returncode == 0 and proc.stdout:
                 for line in proc.stdout.splitlines():
@@ -783,7 +925,7 @@ class LogMonitor:
                     try:
                         item = json.loads(line)
                         msg = decode_log_value(item.get("MESSAGE"))
-                        comm = decode_log_value(item.get("_COMM") or item.get("SYSLOG_IDENTIFIER") or "system")
+                        comm = decode_log_value(item.get("_COMM") or item.get("SYSLOG_IDENTIFIER") or item.get("UNIT") or "security")
                         usec = int(item.get("__REALTIME_TIMESTAMP") or (time.time() * 1000000))
                         event_key = f"LNX-SEC-{usec}"
                         if any(x.get("id") == event_key for x in self.security_logs):
@@ -794,43 +936,109 @@ class LogMonitor:
                             "timestamp": datetime.datetime.fromtimestamp(usec / 1000000.0).isoformat(),
                             "source": comm,
                             "message": msg,
-                            "user": item.get("_AUDIT_LOGINUID") or "root"
+                            "user": item.get("_AUDIT_LOGINUID") or item.get("_UID") or "root"
                         }
 
-                        # Feed into LogThreatDetector
+                        # 1. Run through LogThreatDetector for known attack signatures
                         threat = log_threat_detector.analyze_event(raw_event, os_type="linux")
                         if threat:
                             new_events.append(threat)
+                        else:
+                            # 2. Parse legitimate security audit records (sudo, polkit, session, ssh)
+                            parsed_audit = self._parse_linux_security_audit(raw_event)
+                            if parsed_audit:
+                                new_events.append(parsed_audit)
                     except Exception:
                         continue
         except Exception as e:
             logger.debug(f"Linux security journalctl error: {e}")
 
-        # 2. Check /var/log/auth.log, /var/log/secure, and /var/log/audit/audit.log
+        # ---------------------------------------------------------------------
+        # Source 2: journalctl Plain Text fallback if few/no events
+        # ---------------------------------------------------------------------
+        if len(new_events) < 10:
+            try:
+                cmd = ["journalctl", "-n", "150", "--no-pager"]
+                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3.5)
+                if proc.returncode == 0 and proc.stdout:
+                    for idx, line in enumerate(reversed(proc.stdout.splitlines())):
+                        l_clean = line.strip()
+                        if not l_clean or not any(k in l_clean.lower() for k in ("sudo", "polkit", "sshd", "ssh", "pam_unix", "su:", "pkexec")):
+                            continue
+                        event_key = f"LNX-JNLSEC-{abs(hash(l_clean))}"
+                        if any(x.get("id") == event_key for x in self.security_logs):
+                            continue
+
+                        parsed_audit = self._parse_linux_audit_line(l_clean, event_key)
+                        if parsed_audit:
+                            threat = log_threat_detector.analyze_event(parsed_audit, os_type="linux")
+                            new_events.append(threat if threat else parsed_audit)
+                        if len(new_events) >= 60:
+                            break
+            except Exception as e:
+                logger.debug(f"Linux journalctl text security error: {e}")
+
+        # ---------------------------------------------------------------------
+        # Source 3: /var/log/auth.log, /var/log/secure, and /var/log/audit/audit.log
+        # ---------------------------------------------------------------------
         for auth_file in ("/var/log/auth.log", "/var/log/secure", "/var/log/audit/audit.log"):
             if os.path.exists(auth_file) and os.access(auth_file, os.R_OK):
                 try:
                     with open(auth_file, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = deque(f, maxlen=60)
-                    for line in lines:
+                        lines = deque(f, maxlen=80)
+                    for line in reversed(lines):
                         l_clean = line.strip()
                         if not l_clean:
                             continue
-                        event_key = f"LNX-AUTH-{hash(l_clean)}"
+                        event_key = f"LNX-AUTH-{abs(hash(l_clean))}"
                         if any(x.get("id") == event_key for x in self.security_logs):
                             continue
 
-                        raw_event = {
-                            "id": event_key,
-                            "timestamp": datetime.datetime.now().isoformat(),
-                            "source": "auth-log",
-                            "message": l_clean
-                        }
-                        threat = log_threat_detector.analyze_event(raw_event, os_type="linux")
-                        if threat:
-                            new_events.append(threat)
+                        parsed_audit = self._parse_linux_audit_line(l_clean, event_key)
+                        if parsed_audit:
+                            threat = log_threat_detector.analyze_event(parsed_audit, os_type="linux")
+                            new_events.append(threat if threat else parsed_audit)
                 except Exception:
                     pass
+
+        # ---------------------------------------------------------------------
+        # Source 4: /var/log/syslog & /var/log/messages security grep
+        # ---------------------------------------------------------------------
+        if len(new_events) < 5:
+            for sys_path in ("/var/log/syslog", "/var/log/messages"):
+                if os.path.exists(sys_path) and os.access(sys_path, os.R_OK):
+                    try:
+                        with open(sys_path, "r", encoding="utf-8", errors="ignore") as f:
+                            lines = deque(f, maxlen=100)
+                        for line in reversed(lines):
+                            l_clean = line.strip()
+                            if not l_clean or not any(k in l_clean.lower() for k in ("sudo:", "polkitd", "sshd[", "su[", "pam_unix")):
+                                continue
+                            event_key = f"LNX-SYSAUTH-{abs(hash(l_clean))}"
+                            if any(x.get("id") == event_key for x in self.security_logs):
+                                continue
+                            parsed_audit = self._parse_linux_audit_line(l_clean, event_key)
+                            if parsed_audit:
+                                threat = log_threat_detector.analyze_event(parsed_audit, os_type="linux")
+                                new_events.append(threat if threat else parsed_audit)
+                    except Exception:
+                        pass
+
+        # ---------------------------------------------------------------------
+        # Source 5: Correlation with system_logs_cache for kernel security & firewall drops
+        # ---------------------------------------------------------------------
+        if self.system_logs_cache:
+            for sys_evt in self.system_logs_cache[:50]:
+                msg_lower = str(sys_evt.get("message", "")).lower()
+                src_lower = str(sys_evt.get("source", "")).lower()
+                if any(k in msg_lower or k in src_lower for k in ("ufw", "iptables", "firewall", "segfault", "oom-killer", "tainted", "apparmor", "selinux")):
+                    event_key = f"LNX-CORR-{sys_evt.get('id', '')}"
+                    if any(x.get("id") == event_key for x in self.security_logs):
+                        continue
+                    threat = log_threat_detector.analyze_event(sys_evt, os_type="linux")
+                    if threat:
+                        threat["id"] = event_key
+                        new_events.append(threat)
 
         if new_events:
             with self.lock:
@@ -1287,6 +1495,7 @@ class LogMonitor:
 
         with self.lock:
             sec_incidents = sum(1 for s in self.security_logs if s.get("severity") in ("HIGH", "CRITICAL"))
+            sec_total = len(self.security_logs)
             total_logins = len(self.login_attempts)
             failed_logins = sum(1 for a in self.login_attempts if a.get("status") == "FAILED")
             successful_logins = sum(1 for a in self.login_attempts if a.get("status") == "SUCCESS")
@@ -1302,6 +1511,7 @@ class LogMonitor:
             "system_errors": err_count,
             "system_warnings": warn_count,
             "security_incidents": sec_incidents,
+            "security_total": sec_total,
             "total_logins_24h": total_logins,
             "failed_logins_24h": failed_logins,
             "successful_logins_24h": successful_logins,
